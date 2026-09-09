@@ -128,14 +128,18 @@ router.get("/student/:studentId", async (req, res) => {
     }
 
     const applications = await Application.find({
-      student: studentId,
-    })
-      .populate("company", "companyName location email")
-      .populate(
-        "internship",
-        "title description location duration eligibility skillsRequired deadline"
-      )
-      .sort({ createdAt: -1 });
+  student: studentId,
+})
+  .populate("company", "companyName location email")
+  .populate(
+    "internship",
+    "title description location duration eligibility skillsRequired deadline"
+  )
+  .populate(
+    "faculty",
+    "name email department phone designation"
+  )
+  .sort({ createdAt: -1 });
 
     res.status(200).json({
       status: "success",
@@ -203,6 +207,10 @@ router.get("/company/:companyId", async (req, res) => {
 // COMPANY APPROVE OR REJECT APPLICATION
 // =====================================================
 
+// =====================================================
+// COMPANY APPROVE OR REJECT APPLICATION
+// =====================================================
+
 router.put("/status/:applicationId", async (req, res) => {
   try {
     const { applicationId } = req.params;
@@ -240,6 +248,7 @@ router.put("/status/:applicationId", async (req, res) => {
       });
     }
 
+    // Company approves or rejects only
     application.status = status;
 
     await application.save();
@@ -265,7 +274,6 @@ router.put("/status/:applicationId", async (req, res) => {
     });
   }
 });
-
 // =====================================================
 // TEMPORARY UPDATE APPLICATION COMPANY
 // =====================================================

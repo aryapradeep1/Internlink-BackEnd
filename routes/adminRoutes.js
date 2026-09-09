@@ -162,6 +162,11 @@ router.get("/college-pending-applications", async (req, res) => {
 // COLLEGE APPROVES APPLICATION
 // ======================================================
 
+// ======================================================
+// COLLEGE APPROVES APPLICATION
+// AUTOMATIC FACULTY ASSIGNMENT
+// ======================================================
+
 router.put("/verify-application/:id", async (req, res) => {
   try {
     const application = await Application.findById(
@@ -175,7 +180,7 @@ router.put("/verify-application/:id", async (req, res) => {
       });
     }
 
-    // Make sure company has already approved it
+    // Company must approve first
     if (application.status !== "CompanyApproved") {
       return res.status(400).json({
         status: "error",
@@ -184,12 +189,71 @@ router.put("/verify-application/:id", async (req, res) => {
       });
     }
 
-    // Change status
+    // Get student
+    const student = await Application.findById(
+      application._id
+    ).populate("student", "department name");
+
+    if (!student || !student.student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student not found",
+      });
+    }
+
+    const studentDepartment = student.student.department;
+
+    // Find approved faculty from the SAME department
+    const approvedFaculty = await Faculty.find({
+      department: studentDepartment,
+      status: "Approved",
+    }).select("-password");
+
+    // No faculty available for this department
+    if (approvedFaculty.length === 0) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          `No approved faculty available for ${studentDepartment} department.`,
+      });
+    }
+
+    // ======================================================
+    // FIND FACULTY WITH LOWEST WORKLOAD
+    // ======================================================
+
+    let selectedFaculty = null;
+    let lowestWorkload = Infinity;
+
+    for (const faculty of approvedFaculty) {
+      const workload = await Application.countDocuments({
+        faculty: faculty._id,
+        status: "CollegeApproved",
+      });
+
+      if (workload < lowestWorkload) {
+        lowestWorkload = workload;
+        selectedFaculty = faculty;
+      }
+    }
+
+    if (!selectedFaculty) {
+      return res.status(400).json({
+        status: "error",
+        message: "Unable to automatically assign faculty.",
+      });
+    }
+
+    // ======================================================
+    // ASSIGN FACULTY + COLLEGE APPROVAL
+    // ======================================================
+
+    application.faculty = selectedFaculty._id;
     application.status = "CollegeApproved";
 
     await application.save();
 
-    // Get updated application with student/company/internship
+    // Get complete updated application
     const updatedApplication =
       await Application.findById(application._id)
         .populate(
@@ -203,11 +267,16 @@ router.put("/verify-application/:id", async (req, res) => {
         .populate(
           "internship",
           "title description location duration eligibility skillsRequired deadline"
+        )
+        .populate(
+          "faculty",
+          "name email department phone designation"
         );
 
     res.json({
       status: "success",
-      message: "Application verified by college successfully",
+      message:
+        `Application approved and ${selectedFaculty.name} was automatically assigned as faculty guide.`,
       application: updatedApplication,
     });
   } catch (error) {
@@ -218,11 +287,11 @@ router.put("/verify-application/:id", async (req, res) => {
 
     res.status(500).json({
       status: "error",
-      message: error.message,
+      message: "Failed to verify application",
+      error: error.message,
     });
   }
 });
-
 // ======================================================
 // COLLEGE REJECTS APPLICATION
 // ======================================================
@@ -280,7 +349,9 @@ router.put("/reject-application/:id", async (req, res) => {
 
 router.get("/faculty", async (req, res) => {
   try {
-    const faculty = await Faculty.find()
+    const faculty = await Faculty.find({
+      status: "Approved",
+    })
       .select("-password")
       .sort({ name: 1 });
 
@@ -384,6 +455,111 @@ router.put("/assign-faculty/:id", async (req, res) => {
       status: "error",
       message: "Failed to assign faculty",
       error: error.message,
+    });
+  }
+});
+
+
+
+// ======================================================
+// FACULTY MANAGEMENT
+// ======================================================
+
+// GET ALL PENDING FACULTY
+router.get("/pending-faculty", async (req, res) => {
+  try {
+    const faculty = await Faculty.find({
+      status: "Pending",
+    })
+      .select("-password")
+      .sort({ name: 1 });
+
+    res.json({
+      status: "success",
+      faculty,
+    });
+  } catch (error) {
+    console.error("Error fetching pending faculty:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch pending faculty",
+    });
+  }
+});
+
+// ======================================================
+// APPROVE FACULTY
+// ======================================================
+
+router.put("/approve-faculty/:id", async (req, res) => {
+  try {
+    const faculty = await Faculty.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "Approved",
+      },
+      {
+        new: true,
+      }
+    ).select("-password");
+
+    if (!faculty) {
+      return res.status(404).json({
+        status: "error",
+        message: "Faculty not found",
+      });
+    }
+
+    res.json({
+      status: "success",
+      message: "Faculty approved successfully",
+      faculty,
+    });
+  } catch (error) {
+    console.error("Error approving faculty:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+
+// ======================================================
+// REJECT FACULTY
+// ======================================================
+
+router.put("/reject-faculty/:id", async (req, res) => {
+  try {
+    const faculty = await Faculty.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "Rejected",
+      },
+      {
+        new: true,
+      }
+    ).select("-password");
+
+    if (!faculty) {
+      return res.status(404).json({
+        status: "error",
+        message: "Faculty not found",
+      });
+    }
+
+    res.json({
+      status: "success",
+      message: "Faculty rejected successfully",
+      faculty,
+    });
+  } catch (error) {
+    console.error("Error rejecting faculty:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: error.message,
     });
   }
 });
