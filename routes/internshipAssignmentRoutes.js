@@ -140,4 +140,40 @@ router.get("/student/:studentId", async (req, res) => {
   }
 });
 
+router.get("/faculty/:facultyId", async (req, res) => {
+  try {
+    const { facultyId } = req.params;
+
+    const assignments = await InternshipAssignment.find({
+      facultyGuide: facultyId,
+      status: { $in: ["Assigned", "Active", "Completed"] },
+    })
+      .populate(
+        "student",
+        "name email registerNumber department semester phone"
+      )
+      .populate(
+        "internship",
+        "title description location duration eligibility skillsRequired deadline"
+      )
+      .populate(
+        "company",
+        "companyName email location"
+      );
+
+    res.status(200).json({
+      status: "success",
+      assignments,
+    });
+  } catch (error) {
+    console.error("Fetch Faculty Students Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch assigned students",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

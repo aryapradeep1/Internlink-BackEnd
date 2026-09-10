@@ -4,6 +4,7 @@ const router = express.Router();
 const Company = require("../models/Company");
 const Application = require("../models/Application");
 const Faculty = require("../models/Faculty");
+const InternshipAssignment = require("../models/InternshipAssignment");
 
 // ======================================================
 // COMPANY MANAGEMENT
@@ -252,6 +253,21 @@ router.put("/verify-application/:id", async (req, res) => {
     application.status = "CollegeApproved";
 
     await application.save();
+
+    // ======================================================
+// UPDATE INTERNSHIP ASSIGNMENT WITH FACULTY GUIDE
+// ======================================================
+
+const assignment = await InternshipAssignment.findOne({
+  student: application.student,
+  internship: application.internship,
+  company: application.company,
+});
+
+if (assignment) {
+  assignment.facultyGuide = selectedFaculty._id;
+  await assignment.save();
+}
 
     // Get complete updated application
     const updatedApplication =
@@ -560,6 +576,97 @@ router.put("/reject-faculty/:id", async (req, res) => {
     res.status(500).json({
       status: "error",
       message: error.message,
+    });
+  }
+});
+
+
+// ======================================================
+// SYNC FACULTY GUIDE TO INTERNSHIP ASSIGNMENTS
+// ======================================================
+
+router.put("/sync-faculty-guides", async (req, res) => {
+  try {
+    const assignments = await InternshipAssignment.find({
+      facultyGuide: null,
+    });
+
+    let updatedCount = 0;
+
+    for (const assignment of assignments) {
+      const application = await Application.findOne({
+        student: assignment.student,
+        internship: assignment.internship,
+        company: assignment.company,
+        faculty: { $ne: null },
+      });
+
+      if (application) {
+        assignment.facultyGuide = application.faculty;
+        await assignment.save();
+        updatedCount++;
+      }
+    }
+
+    res.json({
+      status: "success",
+      message: `${updatedCount} internship assignment(s) updated with faculty guide.`,
+    });
+  } catch (error) {
+    console.error("Error syncing faculty guides:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to sync faculty guides",
+      error: error.message,
+    });
+  }
+});
+
+
+// ======================================================
+// TEMPORARY: ASSIGN FACULTY TO EXISTING ASSIGNMENT
+// ======================================================
+
+router.put("/repair-faculty-assignment/:id", async (req, res) => {
+  try {
+    const { facultyId } = req.body;
+
+    const assignment = await InternshipAssignment.findById(
+      req.params.id
+    );
+
+    if (!assignment) {
+      return res.status(404).json({
+        status: "error",
+        message: "Internship assignment not found",
+      });
+    }
+
+    const faculty = await Faculty.findById(facultyId);
+
+    if (!faculty) {
+      return res.status(404).json({
+        status: "error",
+        message: "Faculty not found",
+      });
+    }
+
+    assignment.facultyGuide = faculty._id;
+    await assignment.save();
+
+    res.json({
+      status: "success",
+      message: "Faculty guide assigned successfully",
+      assignment,
+    });
+  } catch (error) {
+    console.error("Error repairing faculty assignment:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to assign faculty guide",
+      error: error.message,
     });
   }
 });

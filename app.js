@@ -10,6 +10,7 @@ const adminLoginRoutes = require("./routes/adminLoginRoutes");
 const internshipRoutes = require("./routes/internshipRoutes");
 const facultyRoutes = require("./routes/facultyRoutes");
 const internshipAssignmentRoutes = require("./routes/internshipAssignmentRoutes");
+const companyGuideRoutes = require("./routes/companyGuideRoutes");
 
 
 const connectDB = require("./config/db");
@@ -73,6 +74,8 @@ app.use(
   "/api/internship-assignments",
   internshipAssignmentRoutes
 );
+
+app.use("/api/company-guides", companyGuideRoutes);
 
 // =====================================================
 // TEST ROUTE
