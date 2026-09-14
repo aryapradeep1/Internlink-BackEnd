@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 require("dotenv").config();
 
 const studentRoutes = require("./routes/studentRoutes");
@@ -11,7 +12,9 @@ const internshipRoutes = require("./routes/internshipRoutes");
 const facultyRoutes = require("./routes/facultyRoutes");
 const internshipAssignmentRoutes = require("./routes/internshipAssignmentRoutes");
 const companyGuideRoutes = require("./routes/companyGuideRoutes");
-
+const collegeRoutes = require("./routes/collegeRoutes");
+const collegeAdminRoutes = require("./routes/collegeAdminRoutes");
+const logbookRoutes = require("./routes/logbookRoutes");
 
 const connectDB = require("./config/db");
 
@@ -30,6 +33,11 @@ connectDB();
 app.use(cors());
 
 app.use(express.json());
+
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"))
+);
 
 // =====================================================
 // ROUTES
@@ -76,7 +84,13 @@ app.use(
 );
 
 app.use("/api/company-guides", companyGuideRoutes);
+app.use(
+  "/api/colleges",
+  collegeRoutes
+);
+app.use("/api/college-admin", collegeAdminRoutes);
 
+app.use("/api/logbook", logbookRoutes);
 // =====================================================
 // TEST ROUTE
 // =====================================================
@@ -86,6 +100,8 @@ app.get("/", (req, res) => {
     "Interlink Backend is Running!"
   );
 });
+
+
 
 // =====================================================
 // START SERVER

@@ -181,4 +181,29 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// Get Company Guides for a Company
+router.get("/company/:companyId", async (req, res) => {
+  try {
+    const { companyId } = req.params;
+
+    const guides = await CompanyGuide.find({
+      company: companyId,
+      status: "Approved",
+    }).select("name email employeeId status");
+
+    res.status(200).json({
+      status: "success",
+      guides,
+    });
+  } catch (error) {
+    console.error("Fetch Company Guides Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch Company Guides",
+      error: error.message,
+    });
+  }
+});
+
 module.exports = router;

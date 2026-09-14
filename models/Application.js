@@ -24,11 +24,11 @@ const applicationSchema = new mongoose.Schema(
     },
 
     // Faculty assigned by college
-faculty: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "Faculty",
-  default: null,
-},
+    faculty: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Faculty",
+      default: null,
+    },
 
     // Internship position
     position: {
@@ -36,16 +36,16 @@ faculty: {
       required: true,
     },
 
-    // Why student wants to apply
-    whyApply: {
+    // Student CV / Resume
+    resume: {
       type: String,
       required: true,
     },
 
-    // Resume link
-    resume: {
+    // Mark list up to current semester
+    markList: {
       type: String,
-      default: "",
+      required: true,
     },
 
     // Application status

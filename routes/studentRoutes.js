@@ -1,6 +1,8 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
+
 const Student = require("../models/Student");
+const College = require("../models/College");
 
 const router = express.Router();
 
@@ -15,7 +17,25 @@ router.post("/register", async (req, res) => {
       department,
       semester,
       phone,
+      college,
     } = req.body;
+
+    // Check required fields
+    if (
+      !name ||
+      !email ||
+      !password ||
+      !registerNumber ||
+      !department ||
+      !semester ||
+      !phone ||
+      !college
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill all required fields",
+      });
+    }
 
     // Check if email already exists
     const existingStudent = await Student.findOne({ email });
@@ -24,6 +44,36 @@ router.post("/register", async (req, res) => {
       return res.status(400).json({
         status: "error",
         message: "Email already registered",
+      });
+    }
+
+    // Check if register number already exists
+    const existingRegisterNumber =
+      await Student.findOne({ registerNumber });
+
+    if (existingRegisterNumber) {
+      return res.status(400).json({
+        status: "error",
+        message: "Register number already registered",
+      });
+    }
+
+    // Check college
+    const existingCollege = await College.findById(college);
+
+    if (!existingCollege) {
+      return res.status(404).json({
+        status: "error",
+        message: "College not found",
+      });
+    }
+
+    // Only approved colleges can have students
+    if (existingCollege.status !== "Approved") {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Student can register only under an approved college",
       });
     }
 
@@ -39,6 +89,7 @@ router.post("/register", async (req, res) => {
       department,
       semester,
       phone,
+      college,
     });
 
     await student.save();
@@ -48,7 +99,7 @@ router.post("/register", async (req, res) => {
       message: "Student registered successfully",
     });
   } catch (error) {
-    console.error(error);
+    console.error("Student registration error:", error);
 
     res.status(500).json({
       status: "error",
@@ -57,23 +108,16 @@ router.post("/register", async (req, res) => {
   }
 });
 
-
-
-// Registration route
-router.post("/register", async (req, res) => {
-  // your existing registration code
-});
-
-
-
-
 // Student Login
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
     // Find student by email
-    const student = await Student.findOne({ email });
+    const student = await Student.findOne({ email }).populate(
+      "college",
+      "collegeName collegeCode status"
+    );
 
     if (!student) {
       return res.status(404).json({
@@ -106,11 +150,11 @@ router.post("/login", async (req, res) => {
         department: student.department,
         semester: student.semester,
         phone: student.phone,
+        college: student.college,
       },
     });
-
   } catch (error) {
-    console.error(error);
+    console.error("Student login error:", error);
 
     res.status(500).json({
       status: "error",
@@ -119,9 +163,5 @@ router.post("/login", async (req, res) => {
   }
 });
 
-
 // Keep this at the VERY END
-module.exports = router;
-
-
 module.exports = router;

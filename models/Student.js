@@ -42,6 +42,13 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+
+    // College to which the student belongs
+    college: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "College",
+      required: true,
+    },
   },
   {
     timestamps: true,

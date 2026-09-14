@@ -32,6 +32,15 @@ const facultySchema = new mongoose.Schema(
       type: String,
       default: "Faculty",
     },
+
+    // COLLEGE
+    college: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "College",
+      required: true,
+    },
+
+    // FACULTY APPROVAL STATUS
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],

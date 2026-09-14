@@ -2,15 +2,16 @@ const express = require("express");
 const router = express.Router();
 
 const Company = require("../models/Company");
-const Application = require("../models/Application");
-const Faculty = require("../models/Faculty");
-const InternshipAssignment = require("../models/InternshipAssignment");
+const College = require("../models/College");
 
 // ======================================================
 // COMPANY MANAGEMENT
 // ======================================================
 
-// Get all pending companies
+// ======================================================
+// GET PENDING COMPANIES
+// ======================================================
+
 router.get("/pending-companies", async (req, res) => {
   try {
     const companies = await Company.find({
@@ -19,10 +20,42 @@ router.get("/pending-companies", async (req, res) => {
 
     res.json({
       status: "success",
-      companies: companies,
+      companies,
     });
   } catch (error) {
-    console.error("Error fetching pending companies:", error);
+    console.error(
+      "Error fetching pending companies:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: error.message,
+    });
+  }
+});
+
+// ======================================================
+// GET APPROVED COMPANIES
+// ======================================================
+
+router.get("/approved-companies", async (req, res) => {
+  try {
+    const companies = await Company.find({
+      status: "Approved",
+    }).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      status: "success",
+      companies,
+    });
+  } catch (error) {
+    console.error(
+      "Error fetching approved companies:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -57,10 +90,13 @@ router.put("/approve-company/:id", async (req, res) => {
     res.json({
       status: "success",
       message: "Company approved successfully",
-      company: company,
+      company,
     });
   } catch (error) {
-    console.error("Error approving company:", error);
+    console.error(
+      "Error approving company:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -95,60 +131,11 @@ router.put("/reject-company/:id", async (req, res) => {
     res.json({
       status: "success",
       message: "Company rejected successfully",
-      company: company,
-    });
-  } catch (error) {
-    console.error("Error rejecting company:", error);
-
-    res.status(500).json({
-      status: "error",
-      message: error.message,
-    });
-  }
-});
-
-// ======================================================
-// COLLEGE VERIFICATION
-// ======================================================
-
-// Get applications waiting for college verification
-//
-// Only applications approved by the company are shown.
-//
-// Status:
-// CompanyApproved
-//
-// These applications can then be:
-// CollegeApproved
-// OR
-// CollegeRejected
-// ======================================================
-
-router.get("/college-pending-applications", async (req, res) => {
-  try {
-    const applications = await Application.find({
-      status: "CompanyApproved",
-    })
-      .populate(
-        "student",
-        "name email registerNumber department semester phone"
-      )
-      .populate(
-        "company",
-        "companyName email location"
-      )
-      .populate(
-        "internship",
-        "title description location duration eligibility skillsRequired deadline"
-      );
-
-    res.json({
-      status: "success",
-      applications: applications,
+      company,
     });
   } catch (error) {
     console.error(
-      "Error fetching college pending applications:",
+      "Error rejecting company:",
       error
     );
 
@@ -160,357 +147,101 @@ router.get("/college-pending-applications", async (req, res) => {
 });
 
 // ======================================================
-// COLLEGE APPROVES APPLICATION
+// COLLEGE MANAGEMENT
 // ======================================================
 
 // ======================================================
-// COLLEGE APPROVES APPLICATION
-// AUTOMATIC FACULTY ASSIGNMENT
+// GET ALL COLLEGES
 // ======================================================
 
-router.put("/verify-application/:id", async (req, res) => {
+router.get("/colleges", async (req, res) => {
   try {
-    const application = await Application.findById(
-      req.params.id
-    );
-
-    if (!application) {
-      return res.status(404).json({
-        status: "error",
-        message: "Application not found",
-      });
-    }
-
-    // Company must approve first
-    if (application.status !== "CompanyApproved") {
-      return res.status(400).json({
-        status: "error",
-        message:
-          "Only applications approved by the company can be verified by the college.",
-      });
-    }
-
-    // Get student
-    const student = await Application.findById(
-      application._id
-    ).populate("student", "department name");
-
-    if (!student || !student.student) {
-      return res.status(404).json({
-        status: "error",
-        message: "Student not found",
-      });
-    }
-
-    const studentDepartment = student.student.department;
-
-    // Find approved faculty from the SAME department
-    const approvedFaculty = await Faculty.find({
-      department: studentDepartment,
-      status: "Approved",
-    }).select("-password");
-
-    // No faculty available for this department
-    if (approvedFaculty.length === 0) {
-      return res.status(400).json({
-        status: "error",
-        message:
-          `No approved faculty available for ${studentDepartment} department.`,
-      });
-    }
-
-    // ======================================================
-    // FIND FACULTY WITH LOWEST WORKLOAD
-    // ======================================================
-
-    let selectedFaculty = null;
-    let lowestWorkload = Infinity;
-
-    for (const faculty of approvedFaculty) {
-      const workload = await Application.countDocuments({
-        faculty: faculty._id,
-        status: "CollegeApproved",
-      });
-
-      if (workload < lowestWorkload) {
-        lowestWorkload = workload;
-        selectedFaculty = faculty;
-      }
-    }
-
-    if (!selectedFaculty) {
-      return res.status(400).json({
-        status: "error",
-        message: "Unable to automatically assign faculty.",
-      });
-    }
-
-    // ======================================================
-    // ASSIGN FACULTY + COLLEGE APPROVAL
-    // ======================================================
-
-    application.faculty = selectedFaculty._id;
-    application.status = "CollegeApproved";
-
-    await application.save();
-
-    // ======================================================
-// UPDATE INTERNSHIP ASSIGNMENT WITH FACULTY GUIDE
-// ======================================================
-
-const assignment = await InternshipAssignment.findOne({
-  student: application.student,
-  internship: application.internship,
-  company: application.company,
-});
-
-if (assignment) {
-  assignment.facultyGuide = selectedFaculty._id;
-  await assignment.save();
-}
-
-    // Get complete updated application
-    const updatedApplication =
-      await Application.findById(application._id)
-        .populate(
-          "student",
-          "name email registerNumber department semester phone"
-        )
-        .populate(
-          "company",
-          "companyName email location"
-        )
-        .populate(
-          "internship",
-          "title description location duration eligibility skillsRequired deadline"
-        )
-        .populate(
-          "faculty",
-          "name email department phone designation"
-        );
+    const colleges = await College.find().sort({
+      createdAt: -1,
+    });
 
     res.json({
       status: "success",
-      message:
-        `Application approved and ${selectedFaculty.name} was automatically assigned as faculty guide.`,
-      application: updatedApplication,
+      colleges,
     });
   } catch (error) {
     console.error(
-      "Error verifying application:",
+      "Error fetching colleges:",
       error
     );
 
     res.status(500).json({
       status: "error",
-      message: "Failed to verify application",
-      error: error.message,
-    });
-  }
-});
-// ======================================================
-// COLLEGE REJECTS APPLICATION
-// ======================================================
-
-router.put("/reject-application/:id", async (req, res) => {
-  try {
-    const application = await Application.findById(
-      req.params.id
-    );
-
-    if (!application) {
-      return res.status(404).json({
-        status: "error",
-        message: "Application not found",
-      });
-    }
-
-    // Make sure company has already approved it
-    if (application.status !== "CompanyApproved") {
-      return res.status(400).json({
-        status: "error",
-        message:
-          "Only applications approved by the company can be rejected by the college.",
-      });
-    }
-
-    // Change status
-    application.status = "CollegeRejected";
-
-    await application.save();
-
-    res.json({
-      status: "success",
-      message: "Application rejected by college",
-      application: application,
-    });
-  } catch (error) {
-    console.error(
-      "Error rejecting application:",
-      error
-    );
-
-    res.status(500).json({
-      status: "error",
-      message: error.message,
-    });
-  }
-});
-
-
-
-// ======================================================
-// GET ALL FACULTY FOR ASSIGNMENT
-// ======================================================
-
-router.get("/faculty", async (req, res) => {
-  try {
-    const faculty = await Faculty.find({
-      status: "Approved",
-    })
-      .select("-password")
-      .sort({ name: 1 });
-
-    res.json({
-      status: "success",
-      faculty,
-    });
-  } catch (error) {
-    console.error("Error fetching faculty:", error);
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to fetch faculty",
+      message: "Failed to fetch colleges",
     });
   }
 });
 
 // ======================================================
-// ASSIGN FACULTY TO APPLICATION
+// GET PENDING COLLEGES
 // ======================================================
 
-router.put("/assign-faculty/:id", async (req, res) => {
+router.get("/pending-colleges", async (req, res) => {
   try {
-    const { facultyId } = req.body;
-
-    if (!facultyId) {
-      return res.status(400).json({
-        status: "error",
-        message: "Faculty ID is required",
-      });
-    }
-
-    // Check faculty exists
-    const faculty = await Faculty.findById(facultyId);
-
-    if (!faculty) {
-      return res.status(404).json({
-        status: "error",
-        message: "Faculty not found",
-      });
-    }
-
-    // Find application
-    const application = await Application.findById(
-      req.params.id
-    );
-
-    if (!application) {
-      return res.status(404).json({
-        status: "error",
-        message: "Application not found",
-      });
-    }
-
-    // Faculty should be assigned only after company approval
-    if (application.status !== "CompanyApproved") {
-      return res.status(400).json({
-        status: "error",
-        message:
-          "Faculty can only be assigned to company-approved applications.",
-      });
-    }
-
-    // Assign faculty
-    application.faculty = facultyId;
-
-    // College approval happens after faculty assignment
-    application.status = "CollegeApproved";
-
-    await application.save();
-
-    // Return populated application
-    const updatedApplication =
-      await Application.findById(application._id)
-        .populate(
-          "student",
-          "name email registerNumber department semester phone"
-        )
-        .populate(
-          "company",
-          "companyName email location"
-        )
-        .populate(
-          "internship",
-          "title description location duration eligibility skillsRequired deadline"
-        )
-        .populate(
-          "faculty",
-          "name email department phone designation"
-        );
-
-    res.json({
-      status: "success",
-      message: "Faculty assigned successfully",
-      application: updatedApplication,
-    });
-  } catch (error) {
-    console.error("Error assigning faculty:", error);
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to assign faculty",
-      error: error.message,
-    });
-  }
-});
-
-
-
-// ======================================================
-// FACULTY MANAGEMENT
-// ======================================================
-
-// GET ALL PENDING FACULTY
-router.get("/pending-faculty", async (req, res) => {
-  try {
-    const faculty = await Faculty.find({
+    const colleges = await College.find({
       status: "Pending",
-    })
-      .select("-password")
-      .sort({ name: 1 });
+    }).sort({
+      createdAt: -1,
+    });
 
     res.json({
       status: "success",
-      faculty,
+      colleges,
     });
   } catch (error) {
-    console.error("Error fetching pending faculty:", error);
+    console.error(
+      "Error fetching pending colleges:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
-      message: "Failed to fetch pending faculty",
+      message: "Failed to fetch pending colleges",
     });
   }
 });
 
 // ======================================================
-// APPROVE FACULTY
+// GET APPROVED COLLEGES
 // ======================================================
 
-router.put("/approve-faculty/:id", async (req, res) => {
+router.get("/approved-colleges", async (req, res) => {
   try {
-    const faculty = await Faculty.findByIdAndUpdate(
+    const colleges = await College.find({
+      status: "Approved",
+    }).sort({
+      createdAt: -1,
+    });
+
+    res.json({
+      status: "success",
+      colleges,
+    });
+  } catch (error) {
+    console.error(
+      "Error fetching approved colleges:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch approved colleges",
+    });
+  }
+});
+
+// ======================================================
+// APPROVE COLLEGE
+// ======================================================
+
+router.put("/approve-college/:id", async (req, res) => {
+  try {
+    const college = await College.findByIdAndUpdate(
       req.params.id,
       {
         status: "Approved",
@@ -518,22 +249,25 @@ router.put("/approve-faculty/:id", async (req, res) => {
       {
         new: true,
       }
-    ).select("-password");
+    );
 
-    if (!faculty) {
+    if (!college) {
       return res.status(404).json({
         status: "error",
-        message: "Faculty not found",
+        message: "College not found",
       });
     }
 
     res.json({
       status: "success",
-      message: "Faculty approved successfully",
-      faculty,
+      message: "College approved successfully",
+      college,
     });
   } catch (error) {
-    console.error("Error approving faculty:", error);
+    console.error(
+      "Error approving college:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -543,12 +277,12 @@ router.put("/approve-faculty/:id", async (req, res) => {
 });
 
 // ======================================================
-// REJECT FACULTY
+// REJECT COLLEGE
 // ======================================================
 
-router.put("/reject-faculty/:id", async (req, res) => {
+router.put("/reject-college/:id", async (req, res) => {
   try {
-    const faculty = await Faculty.findByIdAndUpdate(
+    const college = await College.findByIdAndUpdate(
       req.params.id,
       {
         status: "Rejected",
@@ -556,22 +290,25 @@ router.put("/reject-faculty/:id", async (req, res) => {
       {
         new: true,
       }
-    ).select("-password");
+    );
 
-    if (!faculty) {
+    if (!college) {
       return res.status(404).json({
         status: "error",
-        message: "Faculty not found",
+        message: "College not found",
       });
     }
 
     res.json({
       status: "success",
-      message: "Faculty rejected successfully",
-      faculty,
+      message: "College rejected successfully",
+      college,
     });
   } catch (error) {
-    console.error("Error rejecting faculty:", error);
+    console.error(
+      "Error rejecting college:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -580,93 +317,36 @@ router.put("/reject-faculty/:id", async (req, res) => {
   }
 });
 
-
 // ======================================================
-// SYNC FACULTY GUIDE TO INTERNSHIP ASSIGNMENTS
+// GET SINGLE COLLEGE
 // ======================================================
 
-router.put("/sync-faculty-guides", async (req, res) => {
+router.get("/colleges/:id", async (req, res) => {
   try {
-    const assignments = await InternshipAssignment.find({
-      facultyGuide: null,
-    });
-
-    let updatedCount = 0;
-
-    for (const assignment of assignments) {
-      const application = await Application.findOne({
-        student: assignment.student,
-        internship: assignment.internship,
-        company: assignment.company,
-        faculty: { $ne: null },
-      });
-
-      if (application) {
-        assignment.facultyGuide = application.faculty;
-        await assignment.save();
-        updatedCount++;
-      }
-    }
-
-    res.json({
-      status: "success",
-      message: `${updatedCount} internship assignment(s) updated with faculty guide.`,
-    });
-  } catch (error) {
-    console.error("Error syncing faculty guides:", error);
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to sync faculty guides",
-      error: error.message,
-    });
-  }
-});
-
-
-// ======================================================
-// TEMPORARY: ASSIGN FACULTY TO EXISTING ASSIGNMENT
-// ======================================================
-
-router.put("/repair-faculty-assignment/:id", async (req, res) => {
-  try {
-    const { facultyId } = req.body;
-
-    const assignment = await InternshipAssignment.findById(
+    const college = await College.findById(
       req.params.id
     );
 
-    if (!assignment) {
+    if (!college) {
       return res.status(404).json({
         status: "error",
-        message: "Internship assignment not found",
+        message: "College not found",
       });
     }
-
-    const faculty = await Faculty.findById(facultyId);
-
-    if (!faculty) {
-      return res.status(404).json({
-        status: "error",
-        message: "Faculty not found",
-      });
-    }
-
-    assignment.facultyGuide = faculty._id;
-    await assignment.save();
 
     res.json({
       status: "success",
-      message: "Faculty guide assigned successfully",
-      assignment,
+      college,
     });
   } catch (error) {
-    console.error("Error repairing faculty assignment:", error);
+    console.error(
+      "Error fetching college:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
-      message: "Failed to assign faculty guide",
-      error: error.message,
+      message: error.message,
     });
   }
 });

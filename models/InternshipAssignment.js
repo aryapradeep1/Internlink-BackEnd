@@ -2,14 +2,14 @@ const mongoose = require("mongoose");
 
 const internshipAssignmentSchema = new mongoose.Schema(
   {
-    // Student who is doing the internship
+    // Student doing the internship
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Student",
       required: true,
     },
 
-    // Internship selected by the college
+    // Internship selected by the student/college
     internship: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Internship",
@@ -27,6 +27,13 @@ const internshipAssignmentSchema = new mongoose.Schema(
     facultyGuide: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Faculty",
+      default: null,
+    },
+
+    // Company guide assigned by company
+    companyGuide: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CompanyGuide",
       default: null,
     },
 
