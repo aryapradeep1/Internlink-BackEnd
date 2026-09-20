@@ -163,5 +163,202 @@ router.post("/login", async (req, res) => {
   }
 });
 
+
+// ======================================================
+// GET STUDENT PROFILE
+// ======================================================
+
+router.get("/profile/:id", async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id).populate(
+      "college",
+      "collegeName collegeCode status"
+    );
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      student: {
+        id: student._id,
+        name: student.name,
+        email: student.email,
+        registerNumber: student.registerNumber,
+        department: student.department,
+        semester: student.semester,
+        phone: student.phone,
+        college: student.college,
+      },
+    });
+  } catch (error) {
+    console.error("Get student profile error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to get student profile",
+    });
+  }
+});
+
+// ======================================================
+// UPDATE STUDENT PROFILE
+// ======================================================
+
+router.put("/profile/:id", async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      department,
+      semester,
+      phone,
+    } = req.body;
+
+    if (!name || !email || !department || !semester || !phone) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill all required fields",
+      });
+    }
+
+    const student = await Student.findById(req.params.id);
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student not found",
+      });
+    }
+
+    // Check whether another student is using this email
+    const existingStudent = await Student.findOne({
+      email,
+      _id: { $ne: req.params.id },
+    });
+
+    if (existingStudent) {
+      return res.status(400).json({
+        status: "error",
+        message: "Email already used by another student",
+      });
+    }
+
+    student.name = name;
+    student.email = email;
+    student.department = department;
+    student.semester = semester;
+    student.phone = phone;
+
+    await student.save();
+
+    res.status(200).json({
+      status: "success",
+      message: "Profile updated successfully",
+      student: {
+        id: student._id,
+        name: student.name,
+        email: student.email,
+        registerNumber: student.registerNumber,
+        department: student.department,
+        semester: student.semester,
+        phone: student.phone,
+        college: student.college,
+      },
+    });
+  } catch (error) {
+    console.error("Update student profile error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to update profile",
+    });
+  }
+});
+
+// ======================================================
+// CHANGE STUDENT PASSWORD
+// ======================================================
+
+router.put("/change-password/:id", async (req, res) => {
+  try {
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill all password fields",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "New passwords do not match",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        status: "error",
+        message: "New password must be at least 6 characters",
+      });
+    }
+
+    const student = await Student.findById(req.params.id);
+
+    if (!student) {
+      return res.status(404).json({
+        status: "error",
+        message: "Student not found",
+      });
+    }
+
+    // Check current password
+    const isPasswordCorrect = await bcrypt.compare(
+      currentPassword,
+      student.password
+    );
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        status: "error",
+        message: "Current password is incorrect",
+      });
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      10
+    );
+
+    student.password = hashedPassword;
+
+    await student.save();
+
+    res.status(200).json({
+      status: "success",
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change student password error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to change password",
+    });
+  }
+});
+
+
 // Keep this at the VERY END
 module.exports = router;

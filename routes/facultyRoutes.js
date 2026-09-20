@@ -220,6 +220,220 @@ router.post("/login", async (req, res) => {
 });
 
 // ==========================================
+// GET FACULTY PROFILE
+// ==========================================
+
+router.get("/profile/:id", async (req, res) => {
+  try {
+    const faculty = await Faculty.findById(
+      req.params.id
+    )
+      .select("-password")
+      .populate(
+        "college",
+        "collegeName collegeCode"
+      );
+
+    if (!faculty) {
+      return res.status(404).json({
+        status: "error",
+        message: "Faculty not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      faculty,
+    });
+  } catch (error) {
+    console.error(
+      "Get Faculty Profile Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch faculty profile",
+    });
+  }
+});
+
+// ==========================================
+// UPDATE FACULTY PROFILE
+// ==========================================
+
+router.put("/profile/:id", async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      department,
+      phone,
+      designation,
+    } = req.body;
+
+    const faculty = await Faculty.findById(
+      req.params.id
+    );
+
+    if (!faculty) {
+      return res.status(404).json({
+        status: "error",
+        message: "Faculty not found",
+      });
+    }
+
+    // Check whether another faculty uses the email
+    const existingFaculty =
+      await Faculty.findOne({
+        email,
+        _id: { $ne: req.params.id },
+      });
+
+    if (existingFaculty) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Another faculty member already uses this email",
+      });
+    }
+
+    faculty.name = name;
+    faculty.email = email;
+    faculty.department = department;
+    faculty.phone = phone;
+    faculty.designation = designation;
+
+    await faculty.save();
+
+    res.status(200).json({
+      status: "success",
+      message:
+        "Faculty profile updated successfully",
+      faculty: {
+        id: faculty._id,
+        name: faculty.name,
+        email: faculty.email,
+        department: faculty.department,
+        phone: faculty.phone,
+        designation: faculty.designation,
+        college: faculty.college,
+        status: faculty.status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update Faculty Profile Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message:
+        "Failed to update faculty profile",
+    });
+  }
+});
+
+// ==========================================
+// CHANGE FACULTY PASSWORD
+// ==========================================
+
+router.put(
+  "/change-password/:id",
+  async (req, res) => {
+    try {
+      const {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      } = req.body;
+
+      if (
+        !currentPassword ||
+        !newPassword ||
+        !confirmPassword
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "All password fields are required",
+        });
+      }
+
+      if (
+        newPassword !== confirmPassword
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "New passwords do not match",
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "New password must be at least 6 characters",
+        });
+      }
+
+      const faculty =
+        await Faculty.findById(req.params.id);
+
+      if (!faculty) {
+        return res.status(404).json({
+          status: "error",
+          message: "Faculty not found",
+        });
+      }
+
+      const isPasswordValid =
+        await bcrypt.compare(
+          currentPassword,
+          faculty.password
+        );
+
+      if (!isPasswordValid) {
+        return res.status(401).json({
+          status: "error",
+          message:
+            "Current password is incorrect",
+        });
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          newPassword,
+          10
+        );
+
+      faculty.password = hashedPassword;
+
+      await faculty.save();
+
+      res.status(200).json({
+        status: "success",
+        message:
+          "Password changed successfully",
+      });
+    } catch (error) {
+      console.error(
+        "Change Faculty Password Error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to change password",
+      });
+    }
+  }
+);
+
+// ==========================================
 // GET APPLICATIONS ASSIGNED TO FACULTY
 // ==========================================
 
@@ -269,11 +483,7 @@ router.get(
       });
     }
   }
-
-  
 );
 
-
-
-
 module.exports = router;
+

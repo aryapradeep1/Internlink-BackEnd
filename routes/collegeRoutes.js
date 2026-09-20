@@ -160,6 +160,198 @@ router.post("/login", async (req, res) => {
 });
 
 // ==========================================
+// GET COLLEGE PROFILE
+// ==========================================
+
+router.get("/profile/:id", async (req, res) => {
+  try {
+    const college = await College.findById(req.params.id)
+      .select("-password");
+
+    if (!college) {
+      return res.status(404).json({
+        status: "error",
+        message: "College not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      college,
+    });
+  } catch (error) {
+    console.error("Get College Profile Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to load college profile",
+    });
+  }
+});
+
+// ==========================================
+// UPDATE COLLEGE PROFILE
+// ==========================================
+
+router.put("/profile/:id", async (req, res) => {
+  try {
+    const {
+      collegeName,
+      email,
+      phone,
+      location,
+      website,
+    } = req.body;
+
+    if (
+      !collegeName ||
+      !email ||
+      !phone ||
+      !location
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill all required fields",
+      });
+    }
+
+    const college = await College.findById(req.params.id);
+
+    if (!college) {
+      return res.status(404).json({
+        status: "error",
+        message: "College not found",
+      });
+    }
+
+    // Check whether another college is using this email
+    const existingEmail = await College.findOne({
+      email,
+      _id: { $ne: req.params.id },
+    });
+
+    if (existingEmail) {
+      return res.status(400).json({
+        status: "error",
+        message: "College email already registered",
+      });
+    }
+
+    college.collegeName = collegeName;
+    college.email = email;
+    college.phone = phone;
+    college.location = location;
+    college.website = website;
+
+    await college.save();
+
+    res.status(200).json({
+      status: "success",
+      message: "College profile updated successfully",
+      college: {
+        id: college._id,
+        collegeName: college.collegeName,
+        collegeCode: college.collegeCode,
+        email: college.email,
+        phone: college.phone,
+        location: college.location,
+        website: college.website,
+        status: college.status,
+      },
+    });
+  } catch (error) {
+    console.error("Update College Profile Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to update college profile",
+    });
+  }
+});
+
+// ==========================================
+// CHANGE COLLEGE PASSWORD
+// ==========================================
+
+router.put("/change-password/:id", async (req, res) => {
+  try {
+    const {
+      currentPassword,
+      newPassword,
+      confirmPassword,
+    } = req.body;
+
+    if (
+      !currentPassword ||
+      !newPassword ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill all password fields",
+      });
+    }
+
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        status: "error",
+        message: "New passwords do not match",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "New password must be at least 6 characters",
+      });
+    }
+
+    const college = await College.findById(req.params.id);
+
+    if (!college) {
+      return res.status(404).json({
+        status: "error",
+        message: "College not found",
+      });
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(
+      currentPassword,
+      college.password
+    );
+
+    if (!isPasswordCorrect) {
+      return res.status(401).json({
+        status: "error",
+        message: "Current password is incorrect",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(
+      newPassword,
+      10
+    );
+
+    college.password = hashedPassword;
+
+    await college.save();
+
+    res.status(200).json({
+      status: "success",
+      message: "Password changed successfully",
+    });
+  } catch (error) {
+    console.error("Change College Password Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to change password",
+    });
+  }
+});
+
+// ==========================================
 // GET STUDENTS OF A COLLEGE
 // ==========================================
 
@@ -362,10 +554,6 @@ router.put(
     try {
       const { collegeId, applicationId } = req.params;
 
-      // ==========================================
-      // FIND STUDENTS OF THIS COLLEGE
-      // ==========================================
-
       const students = await Student.find({
         college: collegeId,
       }).select("_id");
@@ -373,10 +561,6 @@ router.put(
       const studentIds = students.map(
         (student) => student._id
       );
-
-      // ==========================================
-      // FIND APPLICATION
-      // ==========================================
 
       const application = await Application.findOne({
         _id: applicationId,
@@ -391,10 +575,6 @@ router.put(
         });
       }
 
-      // ==========================================
-      // COMPANY MUST APPROVE FIRST
-      // ==========================================
-
       if (application.status !== "CompanyApproved") {
         return res.status(400).json({
           status: "error",
@@ -402,10 +582,6 @@ router.put(
             "Only company-approved applications can be approved by college",
         });
       }
-
-      // ==========================================
-      // GET STUDENT
-      // ==========================================
 
       const student = await Student.findById(
         application.student
@@ -417,11 +593,6 @@ router.put(
           message: "Student not found",
         });
       }
-
-      // ==========================================
-      // FIND APPROVED FACULTY
-      // SAME COLLEGE + SAME DEPARTMENT
-      // ==========================================
 
       const facultyList = await Faculty.find({
         college: collegeId,
@@ -436,10 +607,6 @@ router.put(
             "No approved faculty available in student's department",
         });
       }
-
-      // ==========================================
-      // FIND FACULTY WITH LOWEST WORKLOAD
-      // ==========================================
 
       let selectedFaculty = null;
       let lowestWorkload = Infinity;
@@ -464,18 +631,10 @@ router.put(
         });
       }
 
-      // ==========================================
-      // APPROVE APPLICATION
-      // ==========================================
-
       application.status = "CollegeApproved";
       application.faculty = selectedFaculty._id;
 
       await application.save();
-
-      // ==========================================
-      // CREATE / UPDATE INTERNSHIP ASSIGNMENT
-      // ==========================================
 
       let assignment =
         await InternshipAssignment.findOne({
@@ -485,8 +644,6 @@ router.put(
         });
 
       if (assignment) {
-        // Existing assignment
-        // Update faculty guide
         assignment.facultyGuide =
           selectedFaculty._id;
 
@@ -494,7 +651,6 @@ router.put(
 
         await assignment.save();
       } else {
-        // Create new assignment
         assignment =
           await InternshipAssignment.create({
             student: application.student,
@@ -505,10 +661,6 @@ router.put(
             credits: 2,
           });
       }
-
-      // ==========================================
-      // POPULATE APPLICATION
-      // ==========================================
 
       await application.populate([
         {
@@ -532,10 +684,6 @@ router.put(
         },
       ]);
 
-      // ==========================================
-      // POPULATE ASSIGNMENT
-      // ==========================================
-
       await assignment.populate([
         {
           path: "student",
@@ -557,10 +705,6 @@ router.put(
             "name email department phone designation",
         },
       ]);
-
-      // ==========================================
-      // SUCCESS RESPONSE
-      // ==========================================
 
       res.status(200).json({
         status: "success",
@@ -604,10 +748,6 @@ router.put(
     try {
       const { collegeId, applicationId } = req.params;
 
-      // ==========================================
-      // FIND STUDENTS OF COLLEGE
-      // ==========================================
-
       const students = await Student.find({
         college: collegeId,
       }).select("_id");
@@ -615,10 +755,6 @@ router.put(
       const studentIds = students.map(
         (student) => student._id
       );
-
-      // ==========================================
-      // FIND APPLICATION
-      // ==========================================
 
       const application = await Application.findOne({
         _id: applicationId,
@@ -633,10 +769,6 @@ router.put(
         });
       }
 
-      // ==========================================
-      // COMPANY MUST APPROVE FIRST
-      // ==========================================
-
       if (application.status !== "CompanyApproved") {
         return res.status(400).json({
           status: "error",
@@ -644,10 +776,6 @@ router.put(
             "Only company-approved applications can be rejected by college",
         });
       }
-
-      // ==========================================
-      // REJECT APPLICATION
-      // ==========================================
 
       application.status = "CollegeRejected";
       application.faculty = null;

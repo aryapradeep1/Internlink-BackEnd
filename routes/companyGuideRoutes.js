@@ -5,24 +5,42 @@ const Company = require("../models/Company");
 
 const router = express.Router();
 
-// Company Guide Registration
+// ======================================================
+// COMPANY GUIDE REGISTRATION
+// ======================================================
+
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, company, employeeId, password } = req.body;
+    const {
+      name,
+      email,
+      company,
+      employeeId,
+      password,
+    } = req.body;
 
-    if (!name || !email || !company || !employeeId || !password) {
+    if (
+      !name ||
+      !email ||
+      !company ||
+      !employeeId ||
+      !password
+    ) {
       return res.status(400).json({
         status: "error",
         message: "All fields are required",
       });
     }
 
-    const existingGuide = await CompanyGuide.findOne({ email });
+    const existingGuide = await CompanyGuide.findOne({
+      email,
+    });
 
     if (existingGuide) {
       return res.status(400).json({
         status: "error",
-        message: "Company Guide already registered with this email",
+        message:
+          "Company Guide already registered with this email",
       });
     }
 
@@ -35,7 +53,10 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(
+      password,
+      10
+    );
 
     const guide = await CompanyGuide.create({
       name,
@@ -48,7 +69,8 @@ router.post("/register", async (req, res) => {
 
     res.status(201).json({
       status: "success",
-      message: "Company Guide registered successfully. Waiting for company approval.",
+      message:
+        "Company Guide registered successfully. Waiting for company approval.",
       guide: {
         id: guide._id,
         name: guide.name,
@@ -59,7 +81,10 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Company Guide Registration Error:", error);
+    console.error(
+      "Company Guide Registration Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -69,20 +94,26 @@ router.post("/register", async (req, res) => {
   }
 });
 
+// ======================================================
+// COMPANY GUIDE APPROVAL / REJECTION
+// ======================================================
 
-// Company Guide Approval / Rejection
 router.put("/status/:id", async (req, res) => {
   try {
     const { status } = req.body;
 
-    if (!["Approved", "Rejected"].includes(status)) {
+    if (
+      !["Approved", "Rejected"].includes(status)
+    ) {
       return res.status(400).json({
         status: "error",
         message: "Invalid status",
       });
     }
 
-    const guide = await CompanyGuide.findById(req.params.id);
+    const guide = await CompanyGuide.findById(
+      req.params.id
+    );
 
     if (!guide) {
       return res.status(404).json({
@@ -108,17 +139,24 @@ router.put("/status/:id", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Company Guide Status Error:", error);
+    console.error(
+      "Company Guide Status Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
-      message: "Failed to update Company Guide status",
+      message:
+        "Failed to update Company Guide status",
       error: error.message,
     });
   }
 });
 
-// Company Guide Login
+// ======================================================
+// COMPANY GUIDE LOGIN
+// ======================================================
+
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -126,11 +164,14 @@ router.post("/login", async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         status: "error",
-        message: "Email and password are required",
+        message:
+          "Email and password are required",
       });
     }
 
-    const guide = await CompanyGuide.findOne({ email });
+    const guide = await CompanyGuide.findOne({
+      email,
+    });
 
     if (!guide) {
       return res.status(404).json({
@@ -142,14 +183,16 @@ router.post("/login", async (req, res) => {
     if (guide.status !== "Approved") {
       return res.status(403).json({
         status: "error",
-        message: "Company Guide is not approved yet",
+        message:
+          "Company Guide is not approved yet",
       });
     }
 
-    const isPasswordValid = await bcrypt.compare(
-      password,
-      guide.password
-    );
+    const isPasswordValid =
+      await bcrypt.compare(
+        password,
+        guide.password
+      );
 
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -160,7 +203,8 @@ router.post("/login", async (req, res) => {
 
     res.json({
       status: "success",
-      message: "Company Guide login successful",
+      message:
+        "Company Guide login successful",
       guide: {
         id: guide._id,
         name: guide.name,
@@ -171,7 +215,10 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Company Guide Login Error:", error);
+    console.error(
+      "Company Guide Login Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -181,29 +228,259 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// Get Company Guides for a Company
+// ======================================================
+// GET COMPANY GUIDES FOR A COMPANY
+// ======================================================
+// Shows Pending, Approved and Rejected guides
+// belonging to this company.
+// ======================================================
+
 router.get("/company/:companyId", async (req, res) => {
   try {
     const { companyId } = req.params;
 
     const guides = await CompanyGuide.find({
       company: companyId,
-      status: "Approved",
-    }).select("name email employeeId status");
+    }).select(
+      "name email employeeId status"
+    );
 
     res.status(200).json({
       status: "success",
       guides,
     });
   } catch (error) {
-    console.error("Fetch Company Guides Error:", error);
+    console.error(
+      "Fetch Company Guides Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
-      message: "Failed to fetch Company Guides",
+      message:
+        "Failed to fetch Company Guides",
       error: error.message,
     });
   }
 });
+
+// ======================================================
+// GET COMPANY GUIDE PROFILE
+// ======================================================
+
+router.get("/profile/:id", async (req, res) => {
+  try {
+    const guide = await CompanyGuide.findById(
+      req.params.id
+    )
+      .select("-password")
+      .populate(
+        "company",
+        "companyName email location"
+      );
+
+    if (!guide) {
+      return res.status(404).json({
+        status: "error",
+        message: "Company Guide not found",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      guide,
+    });
+  } catch (error) {
+    console.error(
+      "Get Company Guide Profile Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message:
+        "Failed to load Company Guide profile",
+    });
+  }
+});
+
+// ======================================================
+// UPDATE COMPANY GUIDE PROFILE
+// ======================================================
+
+router.put("/profile/:id", async (req, res) => {
+  try {
+    const {
+      name,
+      email,
+      employeeId,
+    } = req.body;
+
+    if (!name || !email || !employeeId) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Please fill all required fields",
+      });
+    }
+
+    const guide = await CompanyGuide.findById(
+      req.params.id
+    );
+
+    if (!guide) {
+      return res.status(404).json({
+        status: "error",
+        message: "Company Guide not found",
+      });
+    }
+
+    const existingEmail =
+      await CompanyGuide.findOne({
+        email,
+        _id: { $ne: req.params.id },
+      });
+
+    if (existingEmail) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Company Guide email already registered",
+      });
+    }
+
+    guide.name = name;
+    guide.email = email;
+    guide.employeeId = employeeId;
+
+    await guide.save();
+
+    res.status(200).json({
+      status: "success",
+      message:
+        "Company Guide profile updated successfully",
+      guide: {
+        id: guide._id,
+        name: guide.name,
+        email: guide.email,
+        company: guide.company,
+        employeeId: guide.employeeId,
+        status: guide.status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Update Company Guide Profile Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message:
+        "Failed to update Company Guide profile",
+    });
+  }
+});
+
+// ======================================================
+// CHANGE COMPANY GUIDE PASSWORD
+// ======================================================
+
+router.put(
+  "/change-password/:id",
+  async (req, res) => {
+    try {
+      const {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      } = req.body;
+
+      if (
+        !currentPassword ||
+        !newPassword ||
+        !confirmPassword
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Please fill all password fields",
+        });
+      }
+
+      if (
+        newPassword !== confirmPassword
+      ) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "New passwords do not match",
+        });
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "New password must be at least 6 characters",
+        });
+      }
+
+      const guide =
+        await CompanyGuide.findById(
+          req.params.id
+        );
+
+      if (!guide) {
+        return res.status(404).json({
+          status: "error",
+          message:
+            "Company Guide not found",
+        });
+      }
+
+      const isPasswordCorrect =
+        await bcrypt.compare(
+          currentPassword,
+          guide.password
+        );
+
+      if (!isPasswordCorrect) {
+        return res.status(401).json({
+          status: "error",
+          message:
+            "Current password is incorrect",
+        });
+      }
+
+      const hashedPassword =
+        await bcrypt.hash(
+          newPassword,
+          10
+        );
+
+      guide.password = hashedPassword;
+
+      await guide.save();
+
+      res.status(200).json({
+        status: "success",
+        message:
+          "Password changed successfully",
+      });
+    } catch (error) {
+      console.error(
+        "Change Company Guide Password Error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to change password",
+      });
+    }
+  }
+);
 
 module.exports = router;
