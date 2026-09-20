@@ -239,11 +239,15 @@ router.get("/company/:companyId", async (req, res) => {
   try {
     const { companyId } = req.params;
 
+    console.log("COMPANY ID RECEIVED:", companyId);
+
     const guides = await CompanyGuide.find({
       company: companyId,
     }).select(
-      "name email employeeId status"
+      "name email employeeId status company"
     );
+
+    console.log("GUIDES FOUND:", guides);
 
     res.status(200).json({
       status: "success",
@@ -257,12 +261,11 @@ router.get("/company/:companyId", async (req, res) => {
 
     res.status(500).json({
       status: "error",
-      message:
-        "Failed to fetch Company Guides",
-      error: error.message,
+      message: "Failed to fetch Company Guides",
     });
   }
 });
+
 
 // ======================================================
 // GET COMPANY GUIDE PROFILE

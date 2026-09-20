@@ -326,18 +326,24 @@ router.get("/company/:companyId", async (req, res) => {
                 "name email department"
               );
 
-          return {
-            ...application.toObject(),
+      return {
+  ...application.toObject(),
 
-            assignmentId:
-              assignment?._id || null,
+  assignmentId:
+    assignment?._id || null,
 
-            companyGuide:
-              assignment?.companyGuide || null,
+  assignmentStatus:
+    assignment?.status || null,
 
-            facultyGuide:
-              assignment?.facultyGuide || null,
-          };
+  certificate:
+    assignment?.certificate || null,
+
+  companyGuide:
+    assignment?.companyGuide || null,
+
+  facultyGuide:
+    assignment?.facultyGuide || null,
+};
         })
       );
 
@@ -539,5 +545,47 @@ router.put(
     }
   }
 );
+// =====================================================
+// GET APPLICATIONS FOR A STUDENT
+// =====================================================
+
+router.get("/student/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    const applications = await Application.find({
+      student: studentId,
+    })
+      .populate(
+        "company",
+        "companyName email location description"
+      )
+      .populate(
+        "internship",
+        "title description location duration eligibility skillsRequired deadline"
+      )
+      .populate(
+        "faculty",
+        "name email department phone designation"
+      )
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      status: "success",
+      applications,
+    });
+  } catch (error) {
+    console.error(
+      "Fetch Student Applications Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to fetch student applications",
+      error: error.message,
+    });
+  }
+});
 
 module.exports = router;

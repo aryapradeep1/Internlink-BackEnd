@@ -93,6 +93,45 @@ router.post("/add", async (req, res) => {
 
     await logbook.save();
 
+    // ==========================================
+// UPDATE INTERNSHIP COMPLETION & CREDITS
+// ==========================================
+
+const assignment = await InternshipAssignment.findOne({
+  student: student,
+  internship: internship,
+});
+
+if (assignment) {
+  const totalLogbooks = await Logbook.find({
+    student: student,
+    internship: internship,
+  });
+
+  const totalHours = totalLogbooks.reduce(
+    (total, entry) =>
+      total + Number(entry.hoursWorked || 0),
+    0
+  );
+
+  // Credits: only when worked hours are greater than 60
+  assignment.credits = totalHours > 60 ? 2 : 0;
+
+  // Completion: only when company-defined duration is reached
+  const requiredHours = parseFloat(
+    internshipExists.duration
+  );
+
+  if (
+    !isNaN(requiredHours) &&
+    totalHours >= requiredHours
+  ) {
+    assignment.status = "Completed";
+  }
+
+  await assignment.save();
+}
+
     res.status(201).json({
       status: "success",
       message: "Logbook entry added successfully",
@@ -443,7 +482,8 @@ router.put("/faculty/reject/:logbookId", async (req, res) => {
 
 
 // ======================================================
-// COMPANY GUIDE - VIEW ASSIGNED STUDENTS' LOGBOOKS
+// ======================================================
+// COMPANY GUIDE - VIEW ONLY THEIR ASSIGNED STUDENTS' LOGBOOKS
 // ======================================================
 
 router.get(
@@ -452,33 +492,54 @@ router.get(
     try {
       const { guideId } = req.params;
 
-      // Find internships assigned to this company guide
-      const assignments =
-        await InternshipAssignment.find({
-          companyGuide: guideId,
-        })
-          .populate("student")
-          .populate("internship")
-          .populate("company");
+      // Find assignments belonging to this Company Guide
+      const assignments = await InternshipAssignment.find({
+        companyGuide: guideId,
+      })
+        .populate(
+          "student",
+          "name email registerNumber department semester"
+        )
+        .populate(
+          "internship",
+          "title description location duration"
+        )
+        .populate(
+          "company",
+          "companyName email location"
+        );
 
       if (!assignments || assignments.length === 0) {
-        return res.json([]);
+        return res.json({
+          status: "success",
+          logbooks: [],
+        });
       }
 
-      // Get student IDs assigned to this company guide
-      const studentIds = assignments.map(
-        (assignment) => assignment.student._id
-      );
+      // Build exact student + internship pairs
+      const conditions = assignments.map((assignment) => ({
+        student: assignment.student._id,
+        internship: assignment.internship._id,
+      }));
 
-      // Get logbooks of those students
+      // Get only logbooks belonging to this Company Guide's assignments
       const logbooks = await Logbook.find({
-        student: { $in: studentIds },
+        $or: conditions,
       })
-        .populate("student")
-        .populate("internship")
+        .populate(
+          "student",
+          "name email registerNumber department semester"
+        )
+        .populate(
+          "internship",
+          "title description location duration"
+        )
         .sort({ date: -1 });
 
-      res.json(logbooks);
+      res.json({
+        status: "success",
+        logbooks,
+      });
     } catch (error) {
       console.error(
         "Company Guide Logbook Fetch Error:",
@@ -486,6 +547,7 @@ router.get(
       );
 
       res.status(500).json({
+        status: "error",
         message: "Failed to fetch company guide logbooks",
         error: error.message,
       });
