@@ -227,14 +227,15 @@ router.put("/profile/:id", async (req, res) => {
         location: company.location,
       },
     });
-  } catch (error) {
-    console.error(error);
+ } catch (error) {
+  console.error("UPDATE COMPANY PROFILE ERROR:", error);
 
-    res.status(500).json({
-      status: "error",
-      message: "Failed to update company profile",
-    });
-  }
+  res.status(500).json({
+    status: "error",
+    message: "Failed to update company profile",
+    error: error.message,
+  });
+}
 });
 
 
