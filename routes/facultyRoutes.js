@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
+const { setAuthCookie } = require("../utils/auth");
 
 const Faculty = require("../models/Faculty");
 const Application = require("../models/Application");
@@ -157,6 +158,8 @@ router.post("/login", async (req, res) => {
       });
     }
 
+  
+
     const faculty = await Faculty.findOne({
       email,
     }).populate(
@@ -193,6 +196,8 @@ router.post("/login", async (req, res) => {
         message: "Invalid password",
       });
     }
+
+    setAuthCookie(res, faculty._id, "faculty");
 
     res.status(200).json({
       status: "success",

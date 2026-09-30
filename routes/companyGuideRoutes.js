@@ -2,7 +2,7 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const CompanyGuide = require("../models/CompanyGuide");
 const Company = require("../models/Company");
-
+const { setAuthCookie } = require("../utils/auth");
 const router = express.Router();
 
 // ======================================================
@@ -200,6 +200,8 @@ router.post("/login", async (req, res) => {
         message: "Invalid password",
       });
     }
+
+    setAuthCookie(res, guide._id, "companyGuide");
 
     res.json({
       status: "success",

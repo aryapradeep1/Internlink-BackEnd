@@ -1,6 +1,8 @@
 const express = require("express");
 const router = express.Router();
 
+const { setAuthCookie } = require("../utils/auth");
+
 const Admin = require("../models/Admin");
 const bcrypt = require("bcryptjs");
 
@@ -26,6 +28,8 @@ router.post("/login", async (req, res) => {
         message: "Invalid password",
       });
     }
+
+    setAuthCookie(res, admin._id, "admin");
 
     res.json({
       status: "success",
