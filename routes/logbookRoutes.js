@@ -5,7 +5,11 @@ const Logbook = require("../models/Logbook");
 const Student = require("../models/Student");
 const Internship = require("../models/Internship");
 const InternshipAssignment = require("../models/InternshipAssignment");
+
+// ======================================================
 // CREATE DAILY LOGBOOK ENTRY
+// ======================================================
+
 router.post("/add", async (req, res) => {
   try {
     const {
@@ -45,8 +49,7 @@ router.post("/add", async (req, res) => {
       });
     }
 
-    const studentExists =
-      await Student.findById(student);
+    const studentExists = await Student.findById(student);
 
     if (!studentExists) {
       return res.status(404).json({
@@ -55,8 +58,7 @@ router.post("/add", async (req, res) => {
       });
     }
 
-    const internshipExists =
-      await Internship.findById(internship);
+    const internshipExists = await Internship.findById(internship);
 
     if (!internshipExists) {
       return res.status(404).json({
@@ -65,18 +67,16 @@ router.post("/add", async (req, res) => {
       });
     }
 
-    const existingEntry =
-      await Logbook.findOne({
-        student: student,
-        internship: internship,
-        date: new Date(date),
-      });
+    const existingEntry = await Logbook.findOne({
+      student,
+      internship,
+      date: new Date(date),
+    });
 
     if (existingEntry) {
       return res.status(400).json({
         status: "error",
-        message:
-          "A logbook entry already exists for this date",
+        message: "A logbook entry already exists for this date",
       });
     }
 
@@ -93,44 +93,44 @@ router.post("/add", async (req, res) => {
 
     await logbook.save();
 
-    // ==========================================
-// UPDATE INTERNSHIP COMPLETION & CREDITS
-// ==========================================
+    // ======================================================
+    // UPDATE INTERNSHIP COMPLETION & CREDITS
+    // ======================================================
 
-const assignment = await InternshipAssignment.findOne({
-  student: student,
-  internship: internship,
-});
+    const assignment = await InternshipAssignment.findOne({
+      student,
+      internship,
+    });
 
-if (assignment) {
-  const totalLogbooks = await Logbook.find({
-    student: student,
-    internship: internship,
-  });
+    if (assignment) {
+      const totalLogbooks = await Logbook.find({
+        student,
+        internship,
+      });
 
-  const totalHours = totalLogbooks.reduce(
-    (total, entry) =>
-      total + Number(entry.hoursWorked || 0),
-    0
-  );
+      const totalHours = totalLogbooks.reduce(
+        (total, entry) =>
+          total + Number(entry.hoursWorked || 0),
+        0
+      );
 
-  // Credits: only when worked hours are greater than 60
-  assignment.credits = totalHours > 60 ? 2 : 0;
+      // Credits
+      assignment.credits = totalHours > 60 ? 2 : 0;
 
-  // Completion: only when company-defined duration is reached
-  const requiredHours = parseFloat(
-    internshipExists.duration
-  );
+      // Completion based on internship duration
+      const requiredHours = parseFloat(
+        internshipExists.duration
+      );
 
-  if (
-    !isNaN(requiredHours) &&
-    totalHours >= requiredHours
-  ) {
-    assignment.status = "Completed";
-  }
+      if (
+        !isNaN(requiredHours) &&
+        totalHours >= requiredHours
+      ) {
+        assignment.status = "Completed";
+      }
 
-  await assignment.save();
-}
+      await assignment.save();
+    }
 
     res.status(201).json({
       status: "success",
@@ -138,10 +138,7 @@ if (assignment) {
       logbook,
     });
   } catch (error) {
-    console.error(
-      "Add Logbook Error:",
-      error
-    );
+    console.error("Add Logbook Error:", error);
 
     res.status(500).json({
       status: "error",
@@ -151,7 +148,10 @@ if (assignment) {
   }
 });
 
+// ======================================================
 // GET STUDENT LOGBOOK ENTRIES
+// ======================================================
+
 router.get(
   "/student/:studentId",
   async (req, res) => {
@@ -174,7 +174,7 @@ router.get(
         })
           .populate(
             "internship",
-            "title description company location duration"
+            "title description company location duration position"
           )
           .sort({ date: -1 });
 
@@ -197,7 +197,10 @@ router.get(
   }
 );
 
+// ======================================================
 // GET LOGBOOK ENTRIES FOR AN INTERNSHIP
+// ======================================================
+
 router.get(
   "/internship/:internshipId",
   async (req, res) => {
@@ -205,9 +208,7 @@ router.get(
       const { internshipId } = req.params;
 
       const internshipExists =
-        await Internship.findById(
-          internshipId
-        );
+        await Internship.findById(internshipId);
 
       if (!internshipExists) {
         return res.status(404).json({
@@ -245,245 +246,197 @@ router.get(
   }
 );
 
-// ==========================================
+// ======================================================
 // FACULTY - VIEW ASSIGNED STUDENTS' LOGBOOKS
-// ==========================================
+// ======================================================
 
-router.get("/faculty/:facultyId", async (req, res) => {
-  try {
-    const { facultyId } = req.params;
+router.get(
+  "/faculty/:facultyId",
+  async (req, res) => {
+    try {
+      const { facultyId } = req.params;
 
-    // Find students assigned to this faculty guide
-    const assignments = await InternshipAssignment.find({
-      facultyGuide: facultyId,
-    })
-      .populate("student")
-      .populate("internship")
-      .populate("company");
+      // Find internships assigned to this faculty
+      const assignments =
+        await InternshipAssignment.find({
+          facultyGuide: facultyId,
+        })
+          .populate(
+            "student",
+            "name email registerNumber department semester phone"
+          )
+          .populate(
+            "internship",
+            "title description location duration position"
+          )
+          .populate(
+            "company",
+            "companyName name email location"
+          );
 
-    if (!assignments || assignments.length === 0) {
-      return res.json([]);
-    }
+      if (!assignments || assignments.length === 0) {
+        return res.status(200).json({
+          status: "success",
+          logbooks: [],
+        });
+      }
 
-    // Get student IDs assigned to this faculty
-    const studentIds = assignments.map(
-      (assignment) => assignment.student._id
-    );
+      // Only use valid assignments
+      const validAssignments =
+        assignments.filter(
+          (assignment) =>
+            assignment.student &&
+            assignment.internship
+        );
 
-    // Get logbook entries of those students
-    const logbooks = await Logbook.find({
-      student: { $in: studentIds },
-    })
-      .populate("student")
-      .populate("internship")
-      .sort({ date: -1 });
+      if (validAssignments.length === 0) {
+        return res.status(200).json({
+          status: "success",
+          logbooks: [],
+        });
+      }
 
-    res.json(logbooks);
-  } catch (error) {
-    console.error("Faculty logbook fetch error:", error);
+      // Create exact student + internship pairs
+      const conditions =
+        validAssignments.map((assignment) => ({
+          student: assignment.student._id,
+          internship: assignment.internship._id,
+        }));
 
-    res.status(500).json({
-      message: "Failed to fetch faculty logbooks",
-      error: error.message,
-    });
-  }
-});
+      // Get only logbooks belonging to this
+      // faculty's assigned student internships
+      const logbooks =
+        await Logbook.find({
+          $or: conditions,
+        })
+          .populate(
+            "student",
+            "name email registerNumber department semester phone"
+          )
+          .populate(
+            "internship",
+            "title description location duration position"
+          )
+          .sort({ date: -1 });
 
+      res.status(200).json({
+        status: "success",
+        logbooks,
+      });
+    } catch (error) {
+      console.error(
+        "Faculty logbook fetch error:",
+        error
+      );
 
-// ==========================================
-// FACULTY - APPROVE LOGBOOK
-// ==========================================
-
-router.put("/faculty/approve/:logbookId", async (req, res) => {
-  try {
-    const { logbookId } = req.params;
-
-    const logbook = await Logbook.findByIdAndUpdate(
-      logbookId,
-      {
-        facultyStatus: "Approved",
-      },
-      { new: true }
-    );
-
-    if (!logbook) {
-      return res.status(404).json({
-        message: "Logbook entry not found",
+      res.status(500).json({
+        status: "error",
+        message: "Failed to fetch faculty logbooks",
+        error: error.message,
       });
     }
-
-    res.json({
-      message: "Logbook approved successfully",
-      logbook,
-    });
-  } catch (error) {
-    console.error("Faculty approve error:", error);
-
-    res.status(500).json({
-      message: "Failed to approve logbook",
-      error: error.message,
-    });
   }
-});
-
-
-// ==========================================
-// FACULTY - REJECT LOGBOOK
-// ==========================================
-
-router.put("/faculty/reject/:logbookId", async (req, res) => {
-  try {
-    const { logbookId } = req.params;
-
-    const logbook = await Logbook.findByIdAndUpdate(
-      logbookId,
-      {
-        facultyStatus: "Rejected",
-      },
-      { new: true }
-    );
-
-    if (!logbook) {
-      return res.status(404).json({
-        message: "Logbook entry not found",
-      });
-    }
-
-    res.json({
-      message: "Logbook rejected successfully",
-      logbook,
-    });
-  } catch (error) {
-    console.error("Faculty reject error:", error);
-
-    res.status(500).json({
-      message: "Failed to reject logbook",
-      error: error.message,
-    });
-  }
-});
-
-// ==========================================
-// FACULTY - VIEW ASSIGNED STUDENTS' LOGBOOKS
-// ==========================================
-
-router.get("/faculty/:facultyId", async (req, res) => {
-  try {
-    const { facultyId } = req.params;
-
-    // Find students assigned to this faculty
-    const assignments = await InternshipAssignment.find({
-      facultyGuide: facultyId,
-    })
-      .populate("student")
-      .populate("internship")
-      .populate("company");
-
-    if (!assignments || assignments.length === 0) {
-      return res.json([]);
-    }
-
-    // Get student IDs
-    const studentIds = assignments.map(
-      (assignment) => assignment.student._id
-    );
-
-    // Get logbooks of assigned students
-    const logbooks = await Logbook.find({
-      student: { $in: studentIds },
-    })
-      .populate("student")
-      .populate("internship")
-      .sort({ date: -1 });
-
-    res.json(logbooks);
-  } catch (error) {
-    console.error("Faculty logbook fetch error:", error);
-
-    res.status(500).json({
-      message: "Failed to fetch faculty logbooks",
-      error: error.message,
-    });
-  }
-});
-
-// ==========================================
-// FACULTY - APPROVE LOGBOOK
-// ==========================================
-
-router.put("/faculty/approve/:logbookId", async (req, res) => {
-  try {
-    const { logbookId } = req.params;
-
-    const logbook = await Logbook.findByIdAndUpdate(
-      logbookId,
-      {
-        facultyStatus: "Approved",
-      },
-      { new: true }
-    );
-
-    if (!logbook) {
-      return res.status(404).json({
-        message: "Logbook entry not found",
-      });
-    }
-
-    res.json({
-      message: "Logbook approved successfully",
-      logbook,
-    });
-  } catch (error) {
-    console.error("Faculty approve error:", error);
-
-    res.status(500).json({
-      message: "Failed to approve logbook",
-      error: error.message,
-    });
-  }
-});
-
-
-// ==========================================
-// FACULTY - REJECT LOGBOOK
-// ==========================================
-
-router.put("/faculty/reject/:logbookId", async (req, res) => {
-  try {
-    const { logbookId } = req.params;
-
-    const logbook = await Logbook.findByIdAndUpdate(
-      logbookId,
-      {
-        facultyStatus: "Rejected",
-      },
-      { new: true }
-    );
-
-    if (!logbook) {
-      return res.status(404).json({
-        message: "Logbook entry not found",
-      });
-    }
-
-    res.json({
-      message: "Logbook rejected successfully",
-      logbook,
-    });
-  } catch (error) {
-    console.error("Faculty reject error:", error);
-
-    res.status(500).json({
-      message: "Failed to reject logbook",
-      error: error.message,
-    });
-  }
-});
-
+);
 
 // ======================================================
+// FACULTY - APPROVE LOGBOOK
 // ======================================================
-// COMPANY GUIDE - VIEW ONLY THEIR ASSIGNED STUDENTS' LOGBOOKS
+
+router.put(
+  "/faculty/approve/:logbookId",
+  async (req, res) => {
+    try {
+      const { logbookId } = req.params;
+
+      const logbook =
+        await Logbook.findByIdAndUpdate(
+          logbookId,
+          {
+            facultyStatus: "Approved",
+          },
+          {
+            new: true,
+          }
+        );
+
+      if (!logbook) {
+        return res.status(404).json({
+          status: "error",
+          message: "Logbook entry not found",
+        });
+      }
+
+      res.json({
+        status: "success",
+        message: "Logbook approved successfully",
+        logbook,
+      });
+    } catch (error) {
+      console.error(
+        "Faculty approve error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to approve logbook",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ======================================================
+// FACULTY - REJECT LOGBOOK
+// ======================================================
+
+router.put(
+  "/faculty/reject/:logbookId",
+  async (req, res) => {
+    try {
+      const { logbookId } = req.params;
+
+      const logbook =
+        await Logbook.findByIdAndUpdate(
+          logbookId,
+          {
+            facultyStatus: "Rejected",
+          },
+          {
+            new: true,
+          }
+        );
+
+      if (!logbook) {
+        return res.status(404).json({
+          status: "error",
+          message: "Logbook entry not found",
+        });
+      }
+
+      res.json({
+        status: "success",
+        message: "Logbook rejected successfully",
+        logbook,
+      });
+    } catch (error) {
+      console.error(
+        "Faculty reject error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message: "Failed to reject logbook",
+        error: error.message,
+      });
+    }
+  }
+);
+
+// ======================================================
+// COMPANY GUIDE - VIEW ONLY THEIR ASSIGNED STUDENTS'
+// LOGBOOKS
 // ======================================================
 
 router.get(
@@ -492,49 +445,66 @@ router.get(
     try {
       const { guideId } = req.params;
 
-      // Find assignments belonging to this Company Guide
-      const assignments = await InternshipAssignment.find({
-        companyGuide: guideId,
-      })
-        .populate(
-          "student",
-          "name email registerNumber department semester"
-        )
-        .populate(
-          "internship",
-          "title description location duration"
-        )
-        .populate(
-          "company",
-          "companyName email location"
-        );
+      const assignments =
+        await InternshipAssignment.find({
+          companyGuide: guideId,
+        })
+          .populate(
+            "student",
+            "name email registerNumber department semester"
+          )
+          .populate(
+            "internship",
+            "title description location duration position"
+          )
+          .populate(
+            "company",
+            "companyName email location"
+          );
 
-      if (!assignments || assignments.length === 0) {
+      if (
+        !assignments ||
+        assignments.length === 0
+      ) {
         return res.json({
           status: "success",
           logbooks: [],
         });
       }
 
-      // Build exact student + internship pairs
-      const conditions = assignments.map((assignment) => ({
-        student: assignment.student._id,
-        internship: assignment.internship._id,
-      }));
+      const validAssignments =
+        assignments.filter(
+          (assignment) =>
+            assignment.student &&
+            assignment.internship
+        );
 
-      // Get only logbooks belonging to this Company Guide's assignments
-      const logbooks = await Logbook.find({
-        $or: conditions,
-      })
-        .populate(
-          "student",
-          "name email registerNumber department semester"
-        )
-        .populate(
-          "internship",
-          "title description location duration"
-        )
-        .sort({ date: -1 });
+      if (validAssignments.length === 0) {
+        return res.json({
+          status: "success",
+          logbooks: [],
+        });
+      }
+
+      const conditions =
+        validAssignments.map((assignment) => ({
+          student: assignment.student._id,
+          internship: assignment.internship._id,
+        }));
+
+      const logbooks =
+        await Logbook.find({
+          $or: conditions,
+        })
+          .populate(
+            "student",
+            "name email registerNumber department semester"
+          )
+          .populate(
+            "internship",
+            "title description location duration position"
+          )
+          .sort({ date: -1 });
 
       res.json({
         status: "success",
@@ -548,75 +518,100 @@ router.get(
 
       res.status(500).json({
         status: "error",
-        message: "Failed to fetch company guide logbooks",
+        message:
+          "Failed to fetch company guide logbooks",
         error: error.message,
       });
     }
   }
 );
 
+// ======================================================
+// COMPANY GUIDE - APPROVE LOGBOOK
+// ======================================================
 
-// Company Guide approves a logbook
 router.put(
   "/company-guide/approve/:logbookId",
   async (req, res) => {
     try {
       const { logbookId } = req.params;
 
-      const logbook = await Logbook.findById(logbookId);
+      const logbook =
+        await Logbook.findById(logbookId);
 
       if (!logbook) {
         return res.status(404).json({
+          status: "error",
           message: "Logbook entry not found",
         });
       }
 
       logbook.companyGuideStatus = "Approved";
+
       await logbook.save();
 
       res.json({
-        message: "Logbook approved by Company Guide",
+        status: "success",
+        message:
+          "Logbook approved by Company Guide",
         logbook,
       });
     } catch (error) {
-      console.error("Company Guide approve error:", error);
+      console.error(
+        "Company Guide approve error:",
+        error
+      );
 
       res.status(500).json({
-        message: "Failed to approve logbook",
+        status: "error",
+        message:
+          "Failed to approve logbook",
         error: error.message,
       });
     }
   }
 );
 
+// ======================================================
+// COMPANY GUIDE - REJECT LOGBOOK
+// ======================================================
 
-// Company Guide rejects a logbook
 router.put(
   "/company-guide/reject/:logbookId",
   async (req, res) => {
     try {
       const { logbookId } = req.params;
 
-      const logbook = await Logbook.findById(logbookId);
+      const logbook =
+        await Logbook.findById(logbookId);
 
       if (!logbook) {
         return res.status(404).json({
+          status: "error",
           message: "Logbook entry not found",
         });
       }
 
       logbook.companyGuideStatus = "Rejected";
+
       await logbook.save();
 
       res.json({
-        message: "Logbook rejected by Company Guide",
+        status: "success",
+        message:
+          "Logbook rejected by Company Guide",
         logbook,
       });
     } catch (error) {
-      console.error("Company Guide reject error:", error);
+      console.error(
+        "Company Guide reject error:",
+        error
+      );
 
       res.status(500).json({
-        message: "Failed to reject logbook",
+        status: "error",
+        message:
+          "Failed to reject logbook",
         error: error.message,
       });
     }

@@ -40,14 +40,17 @@ const facultySchema = new mongoose.Schema(
       required: true,
     },
 
-    // FACULTY APPROVAL STATUS
+    // Faculty is automatically approved after
+    // successful Excel verification
     status: {
       type: String,
       enum: ["Pending", "Approved", "Rejected"],
-      default: "Pending",
+      default: "Approved",
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
 module.exports = mongoose.model("Faculty", facultySchema);

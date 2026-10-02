@@ -1,15 +1,110 @@
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
+
 const { setAuthCookie } = require("../utils/auth");
+const {
+  protect,
+  authorize,
+} = require("../middleware/authMiddleware");
 
 const Faculty = require("../models/Faculty");
+const FacultyVerification = require("../models/FacultyVerification");
+const StudentVerification = require("../models/StudentVerification");
+const Student = require("../models/Student");
 const Application = require("../models/Application");
 const College = require("../models/College");
 
-// ==========================================
+// ======================================================
+// VERIFY FACULTY USING COLLEGE EXCEL RECORD
+// ======================================================
+
+router.post("/verify", async (req, res) => {
+  try {
+    const {
+      name,
+      college,
+      department,
+      verificationCode,
+    } = req.body;
+
+    if (
+      !name ||
+      !college ||
+      !department ||
+      !verificationCode
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Name, college, department and verification code are required",
+      });
+    }
+
+    // Check college
+    const collegeExists = await College.findById(college);
+
+    if (!collegeExists) {
+      return res.status(404).json({
+        status: "error",
+        message: "College not found",
+      });
+    }
+
+    // Only approved colleges can verify faculty
+    if (collegeExists.status !== "Approved") {
+      return res.status(403).json({
+        status: "error",
+        message: "This college is not approved",
+      });
+    }
+
+    // Find matching Excel verification record
+    const verification =
+      await FacultyVerification.findOne({
+        college: college,
+        name: name.trim(),
+        department: department.trim(),
+        verificationCode:
+          verificationCode.trim(),
+        registered: false,
+      });
+
+    if (!verification) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Faculty verification failed. Please check your name, college, department and verification code.",
+      });
+    }
+
+    res.status(200).json({
+      status: "success",
+      message: "Faculty verified successfully",
+
+      faculty: {
+        name: verification.name,
+        college: verification.college,
+        department: verification.department,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Faculty Verification Error:",
+      error
+    );
+
+    res.status(500).json({
+      status: "error",
+      message: "Faculty verification failed",
+      error: error.message,
+    });
+  }
+});
+
+// ======================================================
 // FACULTY REGISTRATION
-// ==========================================
+// ======================================================
 
 router.post("/register", async (req, res) => {
   try {
@@ -21,6 +116,7 @@ router.post("/register", async (req, res) => {
       phone,
       designation,
       college,
+      verificationCode,
     } = req.body;
 
     // Check required fields
@@ -30,16 +126,19 @@ router.post("/register", async (req, res) => {
       !password ||
       !department ||
       !phone ||
-      !college
+      !college ||
+      !verificationCode
     ) {
       return res.status(400).json({
         status: "error",
-        message: "Please provide all required fields",
+        message:
+          "Please provide all required fields",
       });
     }
 
     // Check college
-    const collegeExists = await College.findById(college);
+    const collegeExists =
+      await College.findById(college);
 
     if (!collegeExists) {
       return res.status(404).json({
@@ -56,42 +155,68 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Check if faculty already exists
-    const existingFaculty = await Faculty.findOne({
-      email,
-    });
+    // Find matching verification record
+    const verification =
+      await FacultyVerification.findOne({
+        college: college,
+        name: name.trim(),
+        department: department.trim(),
+        verificationCode:
+          verificationCode.trim(),
+        registered: false,
+      });
+
+    if (!verification) {
+      return res.status(400).json({
+        status: "error",
+        message:
+          "Faculty verification failed. Please verify your details using the college verification code.",
+      });
+    }
+
+    // Check email
+    const existingFaculty =
+      await Faculty.findOne({
+        email: email.trim().toLowerCase(),
+      });
 
     if (existingFaculty) {
       return res.status(400).json({
         status: "error",
-        message: "Faculty with this email already exists",
+        message:
+          "Faculty with this email already exists",
       });
     }
 
     // Encrypt password
-    const hashedPassword = await bcrypt.hash(
-      password,
-      10
-    );
+    const hashedPassword =
+      await bcrypt.hash(password, 10);
 
     // Create faculty
     const faculty = new Faculty({
-      name,
-      email,
+      name: verification.name,
+      email: email.trim().toLowerCase(),
       password: hashedPassword,
-      department,
+      department: verification.department,
       phone,
-      designation: designation || "Faculty",
+      designation:
+        designation || "Faculty",
       college,
-      status: "Pending",
+      status: "Approved",
     });
 
     await faculty.save();
 
+    // Mark verification record as registered
+    verification.registered = true;
+    verification.faculty = faculty._id;
+
+    await verification.save();
+
     res.status(201).json({
       status: "success",
       message:
-        "Faculty registration submitted successfully. Waiting for college approval.",
+        "Faculty registration successful. Your faculty account has been approved.",
       faculty: {
         id: faculty._id,
         name: faculty.name,
@@ -104,7 +229,10 @@ router.post("/register", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Faculty Registration Error:", error);
+    console.error(
+      "Faculty Registration Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -114,9 +242,9 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ==========================================
+// ======================================================
 // GET ALL FACULTY
-// ==========================================
+// ======================================================
 
 router.get("/", async (req, res) => {
   try {
@@ -133,7 +261,10 @@ router.get("/", async (req, res) => {
       faculty,
     });
   } catch (error) {
-    console.error("Get Faculty Error:", error);
+    console.error(
+      "Get Faculty Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -143,29 +274,32 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ==========================================
+// ======================================================
 // FACULTY LOGIN
-// ==========================================
+// ======================================================
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password,
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
         status: "error",
-        message: "Email and password are required",
+        message:
+          "Email and password are required",
       });
     }
 
-  
-
-    const faculty = await Faculty.findOne({
-      email,
-    }).populate(
-      "college",
-      "collegeName collegeCode status"
-    );
+    const faculty =
+      await Faculty.findOne({
+        email: email.trim().toLowerCase(),
+      }).populate(
+        "college",
+        "collegeName collegeCode status"
+      );
 
     if (!faculty) {
       return res.status(400).json({
@@ -174,21 +308,20 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    // Faculty must be approved by college
+    // Faculty must be approved
     if (faculty.status !== "Approved") {
       return res.status(403).json({
         status: "error",
         message:
-          faculty.status === "Pending"
-            ? "Your account is waiting for college approval"
-            : "Your faculty account has been rejected",
+          "Your faculty account is not approved",
       });
     }
 
-    const isMatch = await bcrypt.compare(
-      password,
-      faculty.password
-    );
+    const isMatch =
+      await bcrypt.compare(
+        password,
+        faculty.password
+      );
 
     if (!isMatch) {
       return res.status(400).json({
@@ -197,11 +330,17 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    setAuthCookie(res, faculty._id, "faculty");
+    // Create login session
+    setAuthCookie(
+      res,
+      faculty._id,
+      "faculty"
+    );
 
     res.status(200).json({
       status: "success",
       message: "Faculty login successful",
+
       faculty: {
         id: faculty._id,
         name: faculty.name,
@@ -214,7 +353,10 @@ router.post("/login", async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Faculty Login Error:", error);
+    console.error(
+      "Faculty Login Error:",
+      error
+    );
 
     res.status(500).json({
       status: "error",
@@ -224,125 +366,144 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// ==========================================
+// ======================================================
 // GET FACULTY PROFILE
-// ==========================================
+// ======================================================
 
-router.get("/profile/:id", async (req, res) => {
-  try {
-    const faculty = await Faculty.findById(
-      req.params.id
-    )
-      .select("-password")
-      .populate(
-        "college",
-        "collegeName collegeCode"
+router.get(
+  "/profile/:id",
+  async (req, res) => {
+    try {
+      const faculty =
+        await Faculty.findById(
+          req.params.id
+        )
+          .select("-password")
+          .populate(
+            "college",
+            "collegeName collegeCode"
+          );
+
+      if (!faculty) {
+        return res.status(404).json({
+          status: "error",
+          message: "Faculty not found",
+        });
+      }
+
+      res.status(200).json({
+        status: "success",
+        faculty,
+      });
+    } catch (error) {
+      console.error(
+        "Get Faculty Profile Error:",
+        error
       );
 
-    if (!faculty) {
-      return res.status(404).json({
-        status: "error",
-        message: "Faculty not found",
-      });
-    }
-
-    res.status(200).json({
-      status: "success",
-      faculty,
-    });
-  } catch (error) {
-    console.error(
-      "Get Faculty Profile Error:",
-      error
-    );
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to fetch faculty profile",
-    });
-  }
-});
-
-// ==========================================
-// UPDATE FACULTY PROFILE
-// ==========================================
-
-router.put("/profile/:id", async (req, res) => {
-  try {
-    const {
-      name,
-      email,
-      department,
-      phone,
-      designation,
-    } = req.body;
-
-    const faculty = await Faculty.findById(
-      req.params.id
-    );
-
-    if (!faculty) {
-      return res.status(404).json({
-        status: "error",
-        message: "Faculty not found",
-      });
-    }
-
-    // Check whether another faculty uses the email
-    const existingFaculty =
-      await Faculty.findOne({
-        email,
-        _id: { $ne: req.params.id },
-      });
-
-    if (existingFaculty) {
-      return res.status(400).json({
+      res.status(500).json({
         status: "error",
         message:
-          "Another faculty member already uses this email",
+          "Failed to fetch faculty profile",
       });
     }
-
-    faculty.name = name;
-    faculty.email = email;
-    faculty.department = department;
-    faculty.phone = phone;
-    faculty.designation = designation;
-
-    await faculty.save();
-
-    res.status(200).json({
-      status: "success",
-      message:
-        "Faculty profile updated successfully",
-      faculty: {
-        id: faculty._id,
-        name: faculty.name,
-        email: faculty.email,
-        department: faculty.department,
-        phone: faculty.phone,
-        designation: faculty.designation,
-        college: faculty.college,
-        status: faculty.status,
-      },
-    });
-  } catch (error) {
-    console.error(
-      "Update Faculty Profile Error:",
-      error
-    );
-
-    res.status(500).json({
-      status: "error",
-      message:
-        "Failed to update faculty profile",
-    });
   }
-});
+);
 
-// ==========================================
+// ======================================================
+// UPDATE FACULTY PROFILE
+// ======================================================
+
+router.put(
+  "/profile/:id",
+  async (req, res) => {
+    try {
+      const {
+        name,
+        email,
+        department,
+        phone,
+        designation,
+      } = req.body;
+
+      const faculty =
+        await Faculty.findById(
+          req.params.id
+        );
+
+      if (!faculty) {
+        return res.status(404).json({
+          status: "error",
+          message: "Faculty not found",
+        });
+      }
+
+      // Check duplicate email
+      const existingFaculty =
+        await Faculty.findOne({
+          email: email
+            ?.trim()
+            .toLowerCase(),
+          _id: {
+            $ne: req.params.id,
+          },
+        });
+
+      if (existingFaculty) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Another faculty member already uses this email",
+        });
+      }
+
+      faculty.name = name;
+      faculty.email =
+        email.trim().toLowerCase();
+      faculty.department =
+        department;
+      faculty.phone = phone;
+      faculty.designation =
+        designation;
+
+      await faculty.save();
+
+      res.status(200).json({
+        status: "success",
+        message:
+          "Faculty profile updated successfully",
+
+        faculty: {
+          id: faculty._id,
+          name: faculty.name,
+          email: faculty.email,
+          department:
+            faculty.department,
+          phone: faculty.phone,
+          designation:
+            faculty.designation,
+          college: faculty.college,
+          status: faculty.status,
+        },
+      });
+    } catch (error) {
+      console.error(
+        "Update Faculty Profile Error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to update faculty profile",
+      });
+    }
+  }
+);
+
+// ======================================================
 // CHANGE FACULTY PASSWORD
-// ==========================================
+// ======================================================
 
 router.put(
   "/change-password/:id",
@@ -367,7 +528,8 @@ router.put(
       }
 
       if (
-        newPassword !== confirmPassword
+        newPassword !==
+        confirmPassword
       ) {
         return res.status(400).json({
           status: "error",
@@ -385,7 +547,9 @@ router.put(
       }
 
       const faculty =
-        await Faculty.findById(req.params.id);
+        await Faculty.findById(
+          req.params.id
+        );
 
       if (!faculty) {
         return res.status(404).json({
@@ -414,7 +578,8 @@ router.put(
           10
         );
 
-      faculty.password = hashedPassword;
+      faculty.password =
+        hashedPassword;
 
       await faculty.save();
 
@@ -438,15 +603,16 @@ router.put(
   }
 );
 
-// ==========================================
+// ======================================================
 // GET APPLICATIONS ASSIGNED TO FACULTY
-// ==========================================
+// ======================================================
 
 router.get(
   "/applications/:facultyId",
   async (req, res) => {
     try {
-      const { facultyId } = req.params;
+      const { facultyId } =
+        req.params;
 
       const applications =
         await Application.find({
@@ -490,5 +656,134 @@ router.get(
   }
 );
 
-module.exports = router;
+// ======================================================
+// GET STUDENTS ASSIGNED TO FACULTY
+// FROM COLLEGE STUDENT EXCEL VERIFICATION LIST
+// ======================================================
 
+router.get(
+  "/students/:facultyId",
+  protect,
+  authorize("faculty"),
+  async (req, res) => {
+    try {
+      const { facultyId } =
+        req.params;
+
+      // Faculty can only access their own students
+      if (
+        req.user.id.toString() !==
+        facultyId.toString()
+      ) {
+        return res.status(403).json({
+          status: "error",
+          message:
+            "You are not authorized to access these students",
+        });
+      }
+
+      // Find faculty
+      const faculty =
+        await Faculty.findById(
+          facultyId
+        );
+
+      if (!faculty) {
+        return res.status(404).json({
+          status: "error",
+          message: "Faculty not found",
+        });
+      }
+
+      // Escape faculty name for regex
+      const escapedFacultyName =
+        faculty.name.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&"
+        );
+
+      // ==================================================
+      // READ FROM STUDENT VERIFICATION EXCEL RECORDS
+      // ==================================================
+
+      const verificationStudents =
+        await StudentVerification.find({
+          college: faculty.college,
+
+          assignedFacultyName: {
+            $regex: `^${escapedFacultyName}$`,
+            $options: "i",
+          },
+        })
+          .populate(
+            "college",
+            "collegeName collegeCode"
+          )
+          .populate(
+            "student",
+            "email semester phone"
+          )
+          .sort({ name: 1 });
+
+      // Format data for frontend
+      const students =
+        verificationStudents.map(
+          (verification) => ({
+            _id: verification._id,
+
+            name:
+              verification.name,
+
+            registerNumber:
+              verification.registerNumber,
+
+            department:
+              verification.department,
+
+            assignedFacultyName:
+              verification.assignedFacultyName,
+
+            college:
+              verification.college,
+
+            email:
+              verification.student?.email ||
+              "Not registered yet",
+
+            semester:
+              verification.student?.semester ||
+              "Not available",
+
+            phone:
+              verification.student?.phone ||
+              "Not available",
+
+            registered:
+              verification.registered,
+
+            student:
+              verification.student ||
+              null,
+          })
+        );
+
+      res.status(200).json({
+        status: "success",
+        students,
+      });
+    } catch (error) {
+      console.error(
+        "Get Assigned Students Error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to fetch assigned students",
+      });
+    }
+  }
+);
+
+module.exports = router;

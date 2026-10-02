@@ -10,6 +10,7 @@ const Student = require("../models/Student");
 const Company = require("../models/Company");
 const Internship = require("../models/Internship");
 const InternshipAssignment = require("../models/InternshipAssignment");
+
 // =====================================================
 // UPLOAD FOLDERS
 // =====================================================
@@ -326,24 +327,24 @@ router.get("/company/:companyId", async (req, res) => {
                 "name email department"
               );
 
-      return {
-  ...application.toObject(),
+          return {
+            ...application.toObject(),
 
-  assignmentId:
-    assignment?._id || null,
+            assignmentId:
+              assignment?._id || null,
 
-  assignmentStatus:
-    assignment?.status || null,
+            assignmentStatus:
+              assignment?.status || null,
 
-  certificate:
-    assignment?.certificate || null,
+            certificate:
+              assignment?.certificate || null,
 
-  companyGuide:
-    assignment?.companyGuide || null,
+            companyGuide:
+              assignment?.companyGuide || null,
 
-  facultyGuide:
-    assignment?.facultyGuide || null,
-};
+            facultyGuide:
+              assignment?.facultyGuide || null,
+          };
         })
       );
 
@@ -368,56 +369,6 @@ router.get("/company/:companyId", async (req, res) => {
 });
 
 // =====================================================
-// GET ALL APPLICATIONS FOR A COMPANY
-// =====================================================
-
-router.get("/company/:companyId", async (req, res) => {
-  try {
-    const { companyId } = req.params;
-
-    const companyExists =
-      await Company.findById(companyId);
-
-    if (!companyExists) {
-      return res.status(404).json({
-        status: "error",
-        message: "Company not found",
-      });
-    }
-
-    const applications =
-      await Application.find({
-        company: companyId,
-      })
-        .populate(
-          "student",
-          "name email registerNumber department semester phone"
-        )
-        .populate(
-          "internship",
-          "title description location duration eligibility skillsRequired deadline"
-        )
-        .sort({ createdAt: -1 });
-
-    res.status(200).json({
-      status: "success",
-      applications,
-    });
-  } catch (error) {
-    console.error(
-      "Fetch Company Applications Error:",
-      error
-    );
-
-    res.status(500).json({
-      status: "error",
-      message: "Failed to fetch company applications",
-      error: error.message,
-    });
-  }
-});
-
-// =====================================================
 // COMPANY APPROVE OR REJECT APPLICATION
 // =====================================================
 
@@ -427,6 +378,10 @@ router.put(
     try {
       const { applicationId } = req.params;
       const { status } = req.body;
+
+      // =====================================================
+      // CHECK STATUS
+      // =====================================================
 
       if (
         status !== "CompanyApproved" &&
@@ -438,6 +393,10 @@ router.put(
             "Status must be CompanyApproved or CompanyRejected",
         });
       }
+
+      // =====================================================
+      // FIND APPLICATION
+      // =====================================================
 
       const application =
         await Application.findById(
@@ -451,6 +410,10 @@ router.put(
         });
       }
 
+      // =====================================================
+      // CHECK APPLICATION STATUS
+      // =====================================================
+
       if (application.status !== "Pending") {
         return res.status(400).json({
           status: "error",
@@ -459,16 +422,87 @@ router.put(
         });
       }
 
+      // =====================================================
+      // UPDATE STATUS
+      // =====================================================
+
       application.status = status;
+
+      // =====================================================
+      // CREATE COMPANY CONFIRMATION LETTER
+      // =====================================================
+
+      if (status === "CompanyApproved") {
+        await application.populate([
+          {
+            path: "student",
+            select: "name",
+          },
+          {
+            path: "company",
+            select: "companyName",
+          },
+          {
+            path: "internship",
+            select: "title",
+          },
+        ]);
+
+        const studentName =
+          application.student?.name ||
+          "Student";
+
+        const companyName =
+          application.company?.companyName ||
+          "Company";
+
+        const internshipTitle =
+          application.internship?.title ||
+          "Internship";
+
+        const position =
+          application.position ||
+          "Internship Position";
+
+        application.confirmationLetter = {
+          subject:
+            "Internship Application Confirmation",
+
+          message: `Dear ${studentName},
+
+We are pleased to inform you that your application for the internship position "${position}" at ${companyName} has been approved by the company.
+
+Internship: ${internshipTitle}
+
+Your application has been successfully accepted by the company.
+
+Please forward this confirmation letter to your college for verification and approval.
+
+Regards,
+${companyName}`,
+
+          sentAt: new Date(),
+        };
+      }
+
+      // =====================================================
+      // SAVE APPLICATION
+      // =====================================================
 
       await application.save();
 
+      // =====================================================
+      // SUCCESS RESPONSE
+      // =====================================================
+
       res.status(200).json({
         status: "success",
+
         message:
           status === "CompanyApproved"
-            ? "Application accepted by company. Waiting for college verification."
+            ? "Application accepted by company. Confirmation letter sent to student. Waiting for college verification."
             : "Application rejected by company.",
+
         application,
       });
     } catch (error) {
@@ -545,47 +579,126 @@ router.put(
     }
   }
 );
+
+// =====================================================
+// STUDENT FORWARDS CONFIRMATION LETTER TO COLLEGE
+// =====================================================
+
+router.put(
+  "/forward-to-college/:applicationId",
+  async (req, res) => {
+    try {
+      const { applicationId } = req.params;
+
+      const application =
+        await Application.findById(applicationId);
+
+      if (!application) {
+        return res.status(404).json({
+          status: "error",
+          message: "Application not found",
+        });
+      }
+
+      // Only company-approved applications can be forwarded
+      if (application.status !== "CompanyApproved") {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Only company-approved applications can be forwarded to college",
+        });
+      }
+
+      // Confirmation letter must exist
+      if (!application.confirmationLetter?.message) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Confirmation letter is not available yet",
+        });
+      }
+
+      // Prevent forwarding twice
+      if (application.forwardedToCollege) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Confirmation letter has already been forwarded to college",
+        });
+      }
+
+      application.forwardedToCollege = true;
+      application.forwardedAt = new Date();
+
+      await application.save();
+
+      res.status(200).json({
+        status: "success",
+        message:
+          "Confirmation letter forwarded to college successfully",
+        application,
+      });
+    } catch (error) {
+      console.error(
+        "Forward Confirmation Letter Error:",
+        error
+      );
+
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to forward confirmation letter to college",
+      });
+    }
+  }
+);
+
 // =====================================================
 // GET APPLICATIONS FOR A STUDENT
 // =====================================================
 
-router.get("/student/:studentId", async (req, res) => {
-  try {
-    const { studentId } = req.params;
+router.get(
+  "/student/:studentId",
+  async (req, res) => {
+    try {
+      const { studentId } = req.params;
 
-    const applications = await Application.find({
-      student: studentId,
-    })
-      .populate(
-        "company",
-        "companyName email location description"
-      )
-      .populate(
-        "internship",
-        "title description location duration eligibility skillsRequired deadline"
-      )
-      .populate(
-        "faculty",
-        "name email department phone designation"
-      )
-      .sort({ createdAt: -1 });
+      const applications =
+        await Application.find({
+          student: studentId,
+        })
+          .populate(
+            "company",
+            "companyName email location description"
+          )
+          .populate(
+            "internship",
+            "title description location duration eligibility skillsRequired deadline"
+          )
+          .populate(
+            "faculty",
+            "name email department phone designation"
+          )
+          .sort({ createdAt: -1 });
 
-    res.status(200).json({
-      status: "success",
-      applications,
-    });
-  } catch (error) {
-    console.error(
-      "Fetch Student Applications Error:",
-      error
-    );
+      res.status(200).json({
+        status: "success",
+        applications,
+      });
+    } catch (error) {
+      console.error(
+        "Fetch Student Applications Error:",
+        error
+      );
 
-    res.status(500).json({
-      status: "error",
-      message: "Failed to fetch student applications",
-      error: error.message,
-    });
+      res.status(500).json({
+        status: "error",
+        message:
+          "Failed to fetch student applications",
+        error: error.message,
+      });
+    }
   }
-});
+);
 
 module.exports = router;

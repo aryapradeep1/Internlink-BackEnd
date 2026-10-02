@@ -2,53 +2,45 @@ const mongoose = require("mongoose");
 
 const applicationSchema = new mongoose.Schema(
   {
-    // Student who applied
     student: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Student",
       required: true,
     },
 
-    // Company that owns the internship
     company: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Company",
       required: true,
     },
 
-    // Specific internship the student applied for
     internship: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Internship",
       required: true,
     },
 
-    // Faculty assigned by college
     faculty: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Faculty",
       default: null,
     },
 
-    // Internship position
     position: {
       type: String,
       required: true,
     },
 
-    // Student CV / Resume
     resume: {
       type: String,
       required: true,
     },
 
-    // Mark list up to current semester
     markList: {
       type: String,
       required: true,
     },
 
-    // Application status
     status: {
       type: String,
       enum: [
@@ -60,10 +52,50 @@ const applicationSchema = new mongoose.Schema(
       ],
       default: "Pending",
     },
+
+    // ==========================================
+    // COMPANY CONFIRMATION LETTER
+    // ==========================================
+
+    confirmationLetter: {
+      subject: {
+        type: String,
+        default: "",
+      },
+
+      message: {
+        type: String,
+        default: "",
+      },
+
+      sentAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
+    // ==========================================
+    // FORWARDED TO COLLEGE
+    // ==========================================
+
+    forwardedToCollege: {
+      type: Boolean,
+      default: false,
+    },
+
+    forwardedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
   }
 );
 
-module.exports = mongoose.model("Application", applicationSchema);
+const Application = mongoose.model(
+  "Application",
+  applicationSchema
+);
+
+module.exports = Application;

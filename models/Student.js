@@ -31,6 +31,14 @@ const studentSchema = new mongoose.Schema(
     department: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    // Faculty assigned to the student from the college Excel file
+    assignedFacultyName: {
+      type: String,
+      required: true,
+      trim: true,
     },
 
     semester: {

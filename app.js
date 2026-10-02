@@ -17,7 +17,7 @@ const collegeRoutes = require("./routes/collegeRoutes");
 const collegeAdminRoutes = require("./routes/collegeAdminRoutes");
 const logbookRoutes = require("./routes/logbookRoutes");
 const authRoutes = require("./routes/authRoutes");
-
+const attendanceRoutes = require("./routes/attendanceRoutes");
 const connectDB = require("./config/db");
 
 const app = express();
@@ -68,6 +68,11 @@ app.use("/api/colleges", collegeRoutes);
 app.use("/api/college-admin", collegeAdminRoutes);
 app.use("/api/logbook", logbookRoutes);
 app.use("/api/auth", authRoutes);
+app.use(
+  "/api/attendance",
+  attendanceRoutes
+);
+
 /* =========================================================
    HOME
 ========================================================= */
