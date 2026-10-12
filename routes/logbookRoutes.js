@@ -1,10 +1,15 @@
 const express = require("express");
+const { notifyUser } = require("../utils/notifications");
 const router = express.Router();
 
 const Logbook = require("../models/Logbook");
 const Student = require("../models/Student");
 const Internship = require("../models/Internship");
 const InternshipAssignment = require("../models/InternshipAssignment");
+const {
+  updateAssignmentCompletion,
+  refreshAssignmentCompletion,
+} = require("../utils/internshipCompletion");
 
 // ======================================================
 // CREATE DAILY LOGBOOK ENTRY
@@ -117,20 +122,21 @@ router.post("/add", async (req, res) => {
       // Credits
       assignment.credits = totalHours > 60 ? 2 : 0;
 
-      // Completion based on internship duration
-      const requiredHours = parseFloat(
-        internshipExists.duration
+      await updateAssignmentCompletion(
+        assignment,
+        60,
+        totalLogbooks
       );
-
-      if (
-        !isNaN(requiredHours) &&
-        totalHours >= requiredHours
-      ) {
-        assignment.status = "Completed";
-      }
-
-      await assignment.save();
     }
+
+    try {
+      if (assignment) {
+        const [studentRecord, internshipRecord] = await Promise.all([Student.findById(student).select("name"), Internship.findById(internship).select("title")]);
+        const details = `${studentRecord?.name || "A student"} submitted a logbook entry for ${internshipRecord?.title || "an internship"}: ${String(workDone).slice(0, 100)}`;
+        if (assignment.facultyGuide) await notifyUser({ recipientId: assignment.facultyGuide, recipientRole: "faculty", type: "logbook_review", message: details, relatedEntityId: logbook._id, target: "logbooks", eventKey: `logbook-faculty:${logbook._id}` });
+        if (assignment.companyGuide) await notifyUser({ recipientId: assignment.companyGuide, recipientRole: "companyGuide", type: "logbook_review", message: details, relatedEntityId: logbook._id, target: "logbooks", eventKey: `logbook-guide:${logbook._id}` });
+      }
+    } catch (notificationError) { console.error("Logbook notifications skipped:", notificationError.message); }
 
     res.status(201).json({
       status: "success",
@@ -366,6 +372,11 @@ router.put(
         });
       }
 
+      await refreshAssignmentCompletion(
+        logbook.student,
+        logbook.internship
+      );
+
       res.json({
         status: "success",
         message: "Logbook approved successfully",
@@ -413,6 +424,11 @@ router.put(
           message: "Logbook entry not found",
         });
       }
+
+      await refreshAssignmentCompletion(
+        logbook.student,
+        logbook.internship
+      );
 
       res.json({
         status: "success",

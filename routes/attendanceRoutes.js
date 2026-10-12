@@ -1,4 +1,5 @@
 const express = require("express");
+const { notifyUser } = require("../utils/notifications");
 const router = express.Router();
 
 const Attendance = require("../models/Attendance");
@@ -197,6 +198,13 @@ router.post(
             workDescription || "",
           verificationStatus: "Pending",
         });
+
+      try {
+        if (assignment.facultyGuide) {
+          const student = await require("../models/Student").findById(assignment.student).select("name");
+          await notifyUser({ recipientId: assignment.facultyGuide, recipientRole: "faculty", type: "attendance_review", message: `New attendance submitted for ${student?.name || "an assigned student"} (${status})`, relatedEntityId: attendance._id, target: "attendance", eventKey: `attendance:${attendance._id}` });
+        }
+      } catch (notificationError) { console.error("Attendance notification skipped:", notificationError.message); }
 
       res.status(201).json({
         status: "success",

@@ -57,12 +57,26 @@ router.post("/verify", async (req, res) => {
     }
 
     // Find verification record uploaded by college
-    const verificationRecord =
-      await StudentVerification.findOne({
-        college: college,
-        registerNumber: registerNumber.trim(),
-        verificationCode: verificationCode.trim(),
-      });
+   
+const normalizedRegisterNumber = registerNumber.trim();
+const normalizedVerificationCode = verificationCode.trim();
+
+console.log("Student verification debug:", {
+  collegeId: college,
+  registerNumber: normalizedRegisterNumber,
+  verificationCodeProvided: Boolean(normalizedVerificationCode),
+});
+
+const verificationRecord = await StudentVerification.findOne({
+  college: college,
+  registerNumber: normalizedRegisterNumber,
+  verificationCode: normalizedVerificationCode,
+});
+
+console.log(
+  "Matching verification record found:",
+  Boolean(verificationRecord)
+);
 
     if (!verificationRecord) {
       return res.status(400).json({
@@ -372,13 +386,15 @@ router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const student =
-      await Student.findOne({
-        email,
-      }).populate(
-        "college",
-        "collegeName collegeCode status"
-      );
+  
+const normalizedEmail = email?.trim().toLowerCase();
+
+const student = await Student.findOne({
+  email: normalizedEmail,
+}).populate(
+  "college",
+  "collegeName collegeCode status"
+);
 
     if (!student) {
       return res.status(404).json({

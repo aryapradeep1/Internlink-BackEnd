@@ -8,6 +8,9 @@ const Logbook = require("../models/Logbook");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { protect, authorize } = require("../middleware/authMiddleware");
+const { isInternshipComplete } = require("../utils/internshipCompletion");
+const { notifyUser } = require("../utils/notifications");
 
 // =====================================================
 // CERTIFICATE UPLOAD
@@ -247,7 +250,7 @@ router.get("/faculty/:facultyId", async (req, res) => {
 });
 
 // Assign Company Guide to Internship
-router.put("/company-guide/:assignmentId", async (req, res) => {
+router.put("/company-guide/:assignmentId", protect, authorize("company"), async (req, res) => {
   try {
     const { assignmentId } = req.params;
     const { companyGuideId } = req.body;
@@ -267,6 +270,10 @@ router.put("/company-guide/:assignmentId", async (req, res) => {
         message: "Internship assignment not found",
       });
     }
+
+    if (String(assignment.company) !== String(req.user.id)) return res.status(403).json({ status: "error", message: "You can only assign guides to your company internships" });
+    const approvedApplication = await Application.findOne({ student: assignment.student, internship: assignment.internship, company: assignment.company, status: "CollegeApproved" });
+    if (!approvedApplication) return res.status(400).json({ status: "error", message: "A Company Guide can be assigned only after both company and college approval" });
 
     const CompanyGuide = require("../models/CompanyGuide");
 
@@ -472,6 +479,8 @@ await assignment.save();
 
 router.put(
   "/certificate/:assignmentId",
+  protect,
+  authorize("company"),
   uploadCertificate.single("certificate"),
   async (req, res) => {
     try {
@@ -505,9 +514,8 @@ router.put(
       }
 
       // Make sure this internship belongs to the company
-      if (
-        assignment.company.toString() !==
-        companyId.toString()
+      if (String(req.user.id) !== String(companyId) ||
+        assignment.company.toString() !== companyId.toString()
       ) {
         return res.status(403).json({
           status: "error",
@@ -525,10 +533,21 @@ router.put(
         });
       }
 
+      const completionLogbooks = await Logbook.find({ student: assignment.student, internship: assignment.internship });
+      const completionHours = completionLogbooks.reduce((total, entry) => total + Number(entry.hoursWorked || 0), 0);
+      if (!isInternshipComplete(completionHours, 60, completionLogbooks)) return res.status(400).json({ status: "error", message: "Certificate can be uploaded only after required hours and faculty logbook approvals are complete" });
+
       assignment.certificate =
         `uploads/certificates/${req.file.filename}`;
 
       await assignment.save();
+      try {
+        const [internship, company] = await Promise.all([
+          require("../models/Internship").findById(assignment.internship).select("title"),
+          require("../models/Company").findById(assignment.company).select("companyName"),
+        ]);
+        await notifyUser({ recipientId: assignment.student, recipientRole: "student", type: "certificate_uploaded", message: `Your completion certificate for ${internship?.title || "your internship"} at ${company?.companyName || "the company"} has been uploaded`, relatedEntityId: assignment._id, target: "myInternship", eventKey: `certificate:${assignment._id}` });
+      } catch (notificationError) { console.error("Certificate notification skipped:", notificationError.message); }
 
       res.status(200).json({
         status: "success",

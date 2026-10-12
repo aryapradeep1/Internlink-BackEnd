@@ -1,11 +1,15 @@
+
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcryptjs");
 const { setAuthCookie } = require("../utils/auth");
 
 const Company = require("../models/Company");
+const { notifyAdmins } = require("../utils/notifications");
 
-// Company self-registration
+// =====================================================
+// COMPANY REGISTRATION
+// =====================================================
 router.post("/register", async (req, res) => {
   try {
     const {
@@ -14,89 +18,119 @@ router.post("/register", async (req, res) => {
       password,
       description,
       location,
-      internshipPosition,
-      eligibility,
-      skillsRequired,
-      duration,
-      deadline,
     } = req.body;
 
+    // Validate required fields
+    if (
+      !companyName?.trim() ||
+      !email?.trim() ||
+      !password ||
+      !location?.trim()
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill in all required fields.",
+      });
+    }
+
+    // Validate company description
+    if (
+      typeof description !== "string" ||
+      !description.trim()
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please enter a company description.",
+      });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Check whether company email already exists
-    const existingCompany = await Company.findOne({ email });
+    const existingCompany = await Company.findOne({
+      email: normalizedEmail,
+    });
 
     if (existingCompany) {
       return res.status(400).json({
         status: "error",
-        message: "Company with this email already exists",
+        message: "Company with this email already exists.",
       });
     }
 
     // Encrypt password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create company
-    // Status automatically becomes Pending
+    // Create company and explicitly save description
     const company = new Company({
-      companyName,
-      email,
+      companyName: companyName.trim(),
+      email: normalizedEmail,
       password: hashedPassword,
-      description,
-      location,
-      internshipPosition,
-      eligibility,
-      skillsRequired,
-      duration,
-      deadline,
+      description: description.trim(),
+      location: location.trim(),
+      status: "Pending",
     });
 
     await company.save();
+    await notifyAdmins({ type: "company_registration", message: `New company registration request: ${company.companyName}`, relatedEntityId: company._id, target: "requests", eventKey: `company-registration:${company._id}` });
 
-    res.status(201).json({
+    console.log("Company registered successfully:", {
+      id: company._id,
+      description: company.description,
+    });
+
+    return res.status(201).json({
       status: "success",
       message:
         "Company registration submitted successfully. Please wait for admin approval.",
     });
   } catch (error) {
-    console.error(error);
+    console.error("COMPANY REGISTRATION ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Company registration failed",
+      message: "Company registration failed.",
       error: error.message,
     });
   }
 });
 
-// Company login
+// =====================================================
+// COMPANY LOGIN
+// =====================================================
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const company = await Company.findOne({ email });
+    const company = await Company.findOne({
+      email: email?.trim().toLowerCase(),
+    });
 
     if (!company) {
       return res.status(404).json({
         status: "error",
-        message: "Company not found",
+        message: "Company not found.",
       });
     }
 
-    // Check whether admin approved the company
+    // Check admin approval
     if (company.status === "Pending") {
       return res.status(403).json({
         status: "error",
-        message: "Your company registration is pending admin approval",
+        message:
+          "Your company registration is pending admin approval.",
       });
     }
 
     if (company.status === "Rejected") {
       return res.status(403).json({
         status: "error",
-        message: "Your company registration was rejected by the admin",
+        message:
+          "Your company registration was rejected by the admin.",
       });
     }
 
-    // Check password
+    // Verify password
     const isPasswordValid = await bcrypt.compare(
       password,
       company.password
@@ -105,82 +139,90 @@ router.post("/login", async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         status: "error",
-        message: "Invalid password",
+        message: "Invalid password.",
       });
     }
 
     setAuthCookie(res, company._id, "company");
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
-      message: "Company login successful",
+      message: "Company login successful.",
       company: {
         id: company._id,
         companyName: company.companyName,
         email: company.email,
+        description: company.description,
+        location: company.location,
       },
     });
   } catch (error) {
-    console.error(error);
+    console.error("COMPANY LOGIN ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Company login failed",
+      message: "Company login failed.",
       error: error.message,
     });
   }
 });
 
-// Get all companies
+// =====================================================
+// GET ALL COMPANIES
+// =====================================================
 router.get("/", async (req, res) => {
   try {
-    const companies = await Company.find();
+    const companies = await Company.find().select("-password");
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       companies,
     });
   } catch (error) {
-    console.error(error);
+    console.error("GET ALL COMPANIES ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Failed to fetch companies",
+      message: "Failed to fetch companies.",
       error: error.message,
     });
   }
 });
 
-// Get company profile
+// =====================================================
+// GET COMPANY PROFILE
+// =====================================================
 router.get("/profile/:id", async (req, res) => {
   try {
-    const company = await Company.findById(req.params.id).select(
-      "-password"
-    );
+    const company = await Company.findById(
+      req.params.id
+    ).select("-password");
 
     if (!company) {
       return res.status(404).json({
         status: "error",
-        message: "Company not found",
+        message: "Company not found.",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       company,
     });
   } catch (error) {
-    console.error(error);
+    console.error("GET COMPANY PROFILE ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Failed to fetch company profile",
+      message: "Failed to fetch company profile.",
+      error: error.message,
     });
   }
 });
 
-
-// Update company profile
+// =====================================================
+// UPDATE COMPANY PROFILE
+// =====================================================
 router.put("/profile/:id", async (req, res) => {
   try {
     const {
@@ -195,33 +237,48 @@ router.put("/profile/:id", async (req, res) => {
     if (!company) {
       return res.status(404).json({
         status: "error",
-        message: "Company not found",
+        message: "Company not found.",
       });
     }
 
-    // Check whether another company already uses this email
-    const existingCompany = await Company.findOne({
-      email,
-      _id: { $ne: req.params.id },
-    });
+    // Check whether another company uses this email
+    if (email?.trim()) {
+      const normalizedEmail = email.trim().toLowerCase();
 
-    if (existingCompany) {
-      return res.status(400).json({
-        status: "error",
-        message: "Another company already uses this email",
+      const existingCompany = await Company.findOne({
+        email: normalizedEmail,
+        _id: { $ne: req.params.id },
       });
+
+      if (existingCompany) {
+        return res.status(400).json({
+          status: "error",
+          message:
+            "Another company already uses this email.",
+        });
+      }
+
+      company.email = normalizedEmail;
     }
 
-    company.companyName = companyName;
-    company.email = email;
-    company.description = description;
-    company.location = location;
+    if (typeof companyName === "string") {
+      company.companyName = companyName.trim();
+    }
+
+    // Update description only when supplied
+    if (typeof description === "string") {
+      company.description = description.trim();
+    }
+
+    if (typeof location === "string") {
+      company.location = location.trim();
+    }
 
     await company.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
-      message: "Company profile updated successfully",
+      message: "Company profile updated successfully.",
       company: {
         id: company._id,
         companyName: company.companyName,
@@ -230,19 +287,20 @@ router.put("/profile/:id", async (req, res) => {
         location: company.location,
       },
     });
- } catch (error) {
-  console.error("UPDATE COMPANY PROFILE ERROR:", error);
+  } catch (error) {
+    console.error("UPDATE COMPANY PROFILE ERROR:", error);
 
-  res.status(500).json({
-    status: "error",
-    message: "Failed to update company profile",
-    error: error.message,
-  });
-}
+    return res.status(500).json({
+      status: "error",
+      message: "Failed to update company profile.",
+      error: error.message,
+    });
+  }
 });
 
-
-// Change company password
+// =====================================================
+// CHANGE COMPANY PASSWORD
+// =====================================================
 router.put("/change-password/:id", async (req, res) => {
   try {
     const {
@@ -251,17 +309,29 @@ router.put("/change-password/:id", async (req, res) => {
       confirmPassword,
     } = req.body;
 
+    if (
+      !currentPassword ||
+      !newPassword ||
+      !confirmPassword
+    ) {
+      return res.status(400).json({
+        status: "error",
+        message: "Please fill in all password fields.",
+      });
+    }
+
     if (newPassword !== confirmPassword) {
       return res.status(400).json({
         status: "error",
-        message: "New passwords do not match",
+        message: "New passwords do not match.",
       });
     }
 
     if (newPassword.length < 6) {
       return res.status(400).json({
         status: "error",
-        message: "New password must be at least 6 characters",
+        message:
+          "New password must be at least 6 characters.",
       });
     }
 
@@ -270,7 +340,7 @@ router.put("/change-password/:id", async (req, res) => {
     if (!company) {
       return res.status(404).json({
         status: "error",
-        message: "Company not found",
+        message: "Company not found.",
       });
     }
 
@@ -282,55 +352,59 @@ router.put("/change-password/:id", async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         status: "error",
-        message: "Current password is incorrect",
+        message: "Current password is incorrect.",
       });
     }
 
-    const hashedPassword = await bcrypt.hash(
+    company.password = await bcrypt.hash(
       newPassword,
       10
     );
 
-    company.password = hashedPassword;
-
     await company.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
-      message: "Password changed successfully",
+      message: "Password changed successfully.",
     });
   } catch (error) {
-    console.error(error);
+    console.error("CHANGE COMPANY PASSWORD ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Failed to change password",
+      message: "Failed to change password.",
+      error: error.message,
     });
   }
 });
 
-// Get company by ID
+// =====================================================
+// GET COMPANY BY ID
+// Keep this route after /profile/:id
+// =====================================================
 router.get("/:id", async (req, res) => {
   try {
-    const company = await Company.findById(req.params.id);
+    const company = await Company.findById(
+      req.params.id
+    ).select("-password");
 
     if (!company) {
       return res.status(404).json({
         status: "error",
-        message: "Company not found",
+        message: "Company not found.",
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       company,
     });
   } catch (error) {
-    console.error(error);
+    console.error("GET COMPANY BY ID ERROR:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       status: "error",
-      message: "Failed to fetch company",
+      message: "Failed to fetch company.",
       error: error.message,
     });
   }

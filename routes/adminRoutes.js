@@ -5,6 +5,16 @@ const bcrypt = require("bcryptjs");
 const Company = require("../models/Company");
 const College = require("../models/College");
 const Admin = require("../models/Admin");
+const {
+  protect,
+  authorize,
+} = require("../middleware/authMiddleware");
+
+// ======================================================
+// ADMIN ROUTE SECURITY
+// ======================================================
+
+router.use(protect, authorize("admin"));
 
 // ======================================================
 // GET PENDING COMPANIES
@@ -295,13 +305,23 @@ router.get("/colleges/:id", async (req, res) => {
 // ADMIN CHANGE PASSWORD
 // ======================================================
 
+
 router.put("/change-password/:id", async (req, res) => {
   try {
+    // Allow an Admin to change only their own password
+    if (req.user.id !== req.params.id) {
+      return res.status(403).json({
+        status: "error",
+        message: "You can only change your own password",
+      });
+    }
+
     const {
       currentPassword,
       newPassword,
       confirmPassword,
     } = req.body;
+
 
     // Check all fields
     if (

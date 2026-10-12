@@ -3,6 +3,7 @@ const router = express.Router();
 
 const Internship = require("../models/Internship");
 const Company = require("../models/Company");
+const { notifyEligibleStudents } = require("../utils/notifications");
 
 // =====================================================
 // POST A NEW INTERNSHIP
@@ -70,6 +71,10 @@ router.post("/", async (req, res) => {
     });
 
     await internship.save();
+    try {
+      await internship.populate("company", "companyName");
+      await notifyEligibleStudents(internship);
+    } catch (notificationError) { console.error("Internship notification skipped:", notificationError.message); }
 
     res.status(201).json({
       status: "success",

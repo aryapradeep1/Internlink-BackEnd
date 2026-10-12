@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const CompanyGuide = require("../models/CompanyGuide");
 const Company = require("../models/Company");
 const { setAuthCookie } = require("../utils/auth");
+const { notifyUser } = require("../utils/notifications");
 const router = express.Router();
 
 // ======================================================
@@ -66,6 +67,7 @@ router.post("/register", async (req, res) => {
       password: hashedPassword,
       status: "Pending",
     });
+    await notifyUser({ recipientId: companyExists._id, recipientRole: "company", type: "guide_registration", message: `Company Guide ${guide.name} submitted a registration request`, relatedEntityId: guide._id, target: "guides", eventKey: `guide-registration:${guide._id}` });
 
     res.status(201).json({
       status: "success",

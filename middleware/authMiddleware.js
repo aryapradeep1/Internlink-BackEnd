@@ -1,14 +1,10 @@
-const { verifyToken } = require("../utils/auth");
 
-// ======================================================
-// AUTHENTICATION MIDDLEWARE
-// ======================================================
+const { verifyToken, clearAuthCookie } = require("../utils/auth");
 
 const protect = (req, res, next) => {
   try {
     const token = req.cookies?.internlink_token;
 
-    // No login cookie
     if (!token) {
       return res.status(401).json({
         status: "error",
@@ -16,10 +12,8 @@ const protect = (req, res, next) => {
       });
     }
 
-    // Verify JWT
     const decoded = verifyToken(token);
 
-    // Store authenticated user information
     req.user = {
       id: decoded.id,
       role: decoded.role,
@@ -29,16 +23,15 @@ const protect = (req, res, next) => {
   } catch (error) {
     console.error("Authentication error:", error.message);
 
+    // Remove expired or invalid authentication cookies.
+    clearAuthCookie(res);
+
     return res.status(401).json({
       status: "error",
       message: "Session expired or invalid",
     });
   }
 };
-
-// ======================================================
-// ROLE AUTHORIZATION
-// ======================================================
 
 const authorize = (...allowedRoles) => {
   return (req, res, next) => {
@@ -60,7 +53,4 @@ const authorize = (...allowedRoles) => {
   };
 };
 
-module.exports = {
-  protect,
-  authorize,
-};
+module.exports = { protect, authorize };

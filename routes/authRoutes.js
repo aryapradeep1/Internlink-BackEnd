@@ -9,6 +9,7 @@ const Company = require("../models/Company");
 const Faculty = require("../models/Faculty");
 const CompanyGuide = require("../models/CompanyGuide");
 const CollegeAdmin = require("../models/CollegeAdmin");
+const College = require("../models/College");
 const Admin = require("../models/Admin");
 
 // ======================================================
@@ -90,6 +91,13 @@ router.get("/me", protect, async (req, res) => {
       user = await Admin.findById(id)
         .select("-password");
     }
+
+    
+else if (role === "college") {
+  user = await College.findById(id)
+    .select("-password");
+}
+
 
     // --------------------------------------------------
     // INVALID ROLE

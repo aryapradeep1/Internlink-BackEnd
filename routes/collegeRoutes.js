@@ -11,8 +11,34 @@ const Application = require("../models/Application");
 const InternshipAssignment = require("../models/InternshipAssignment");
 const StudentVerification = require("../models/StudentVerification");
 const FacultyVerification = require("../models/FacultyVerification");
-
+const { setAuthCookie } = require("../utils/auth");
+const { notifyAdmins, notifyStudent, notifyCompany } = require("../utils/notifications");
 const router = express.Router();
+
+// ==========================================
+// GET APPROVED COLLEGES
+// Used by Student Registration
+// ==========================================
+
+router.get("/", async (req, res) => {
+  try {
+    const colleges = await College.find({
+      status: "Approved",
+    }).select("collegeName collegeCode");
+
+    res.status(200).json({
+      status: "success",
+      colleges,
+    });
+  } catch (error) {
+    console.error("Get Colleges Error:", error);
+
+    res.status(500).json({
+      status: "error",
+      message: "Failed to load colleges",
+    });
+  }
+});
 
 // ==========================================
 // EXCEL UPLOAD CONFIGURATION
@@ -121,6 +147,7 @@ router.post("/register", async (req, res) => {
     });
 
     await college.save();
+    await notifyAdmins({ type: "college_registration", message: `New college registration request: ${college.collegeName}`, relatedEntityId: college._id, target: "requests", eventKey: `college-registration:${college._id}` });
 
     res.status(201).json({
       status: "success",
@@ -152,7 +179,12 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const college = await College.findOne({ email });
+const normalizedEmail = email.trim().toLowerCase();
+
+const college = await College.findOne({
+  email: normalizedEmail,
+});
+
 
     if (!college) {
       return res.status(404).json({
@@ -180,7 +212,7 @@ router.post("/login", async (req, res) => {
           "Your college account is waiting for admin approval",
       });
     }
-
+setAuthCookie(res, college._id, "college");
     res.status(200).json({
       status: "success",
       message: "College login successful",
@@ -1486,6 +1518,9 @@ router.put(
             "name email department phone designation",
         },
       ]);
+
+      await notifyStudent(application.student._id, { type: "college_approval", message: `Your application for ${application.internship?.title || "an internship"} at ${application.company?.companyName || "the company"} was approved by your college`, relatedEntityId: application._id, target: "myInternship", eventKey: `college-approved:${application._id}` });
+      await notifyCompany(application.company._id, { type: "college_approval", message: `${application.student?.name || "A student"} received college approval for ${application.internship?.title || "an internship"}`, relatedEntityId: application._id, target: "applications", eventKey: `college-approved-company:${application._id}` });
 
       // ------------------------------------------
       // Response

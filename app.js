@@ -19,6 +19,8 @@ const logbookRoutes = require("./routes/logbookRoutes");
 const authRoutes = require("./routes/authRoutes");
 const attendanceRoutes = require("./routes/attendanceRoutes");
 const connectDB = require("./config/db");
+const passwordResetRoutes = require("./routes/passwordResetRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 
 const app = express();
 
@@ -72,6 +74,9 @@ app.use(
   "/api/attendance",
   attendanceRoutes
 );
+
+app.use("/api/password", passwordResetRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 /* =========================================================
    HOME
